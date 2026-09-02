@@ -26,17 +26,41 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
+  const authorization = req.headers.get("authorization") ?? "";
 
   if (!cronSecret) {
     return NextResponse.json(
-      { ok: false, error: "CRON_SECRET is not configured" },
+      {
+        ok: false,
+        error: "CRON_SECRET is not configured",
+        debug: {
+          serverSecretConfigured: false,
+          receivedAuthorization: authorization.length > 0,
+          receivedAuthorizationLength: authorization.length,
+        },
+      },
       { status: 500 },
     );
   }
 
-  const authorization = req.headers.get("authorization");
-  if (authorization !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const expectedAuthorization = `Bearer ${cronSecret}`;
+
+  if (authorization !== expectedAuthorization) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Unauthorized",
+        debug: {
+          serverSecretConfigured: true,
+          serverSecretLength: cronSecret.length,
+          receivedAuthorization: authorization.length > 0,
+          receivedAuthorizationStartsWithBearer: authorization.startsWith("Bearer "),
+          receivedAuthorizationLength: authorization.length,
+          expectedAuthorizationLength: expectedAuthorization.length,
+        },
+      },
+      { status: 401 },
+    );
   }
 
   const { data, error } = await supabaseAdmin
