@@ -13,6 +13,35 @@ type Player = {
   losses: number;
 };
 
+type OpenDotaPlayer = {
+  profile?: {
+    avatar?: string | null;
+    avatarmedium?: string | null;
+    avatarfull?: string | null;
+  };
+};
+
+async function getAvatar(accountId: number) {
+  try {
+    const response = await fetch(
+      `https://api.opendota.com/api/players/${accountId}`,
+      { cache: "no-store" },
+    );
+
+    if (!response.ok) return null;
+
+    const player = (await response.json()) as OpenDotaPlayer;
+    return (
+      player.profile?.avatarfull ??
+      player.profile?.avatarmedium ??
+      player.profile?.avatar ??
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
 export default async function Home() {
   noStore();
 
@@ -33,6 +62,9 @@ export default async function Home() {
   }
 
   const players = (data ?? []) as Player[];
+  const avatars = await Promise.all(
+    players.map((player) => getAvatar(player.account_id)),
+  );
 
   return (
     <>
@@ -59,14 +91,28 @@ export default async function Home() {
               const winrate = total
                 ? ((p.wins / total) * 100).toFixed(1)
                 : "0.0";
+              const avatar = avatars[i];
 
               return (
                 <tr key={p.id}>
                   <td className="rank">#{i + 1}</td>
 
                   <td>
-                    <a className="player-name" href={`/player/${p.id}`}>
-                      {p.name}
+                    <a className="player-link" href={`/player/${p.id}`}>
+                      {avatar ? (
+                        <img
+                          className="player-avatar"
+                          src={avatar}
+                          alt=""
+                          width={40}
+                          height={40}
+                        />
+                      ) : (
+                        <span className="player-avatar player-avatar-fallback">
+                          {p.name.slice(0, 1).toUpperCase()}
+                        </span>
+                      )}
+                      <span className="player-name">{p.name}</span>
                     </a>
                   </td>
 
