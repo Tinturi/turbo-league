@@ -23,7 +23,25 @@ tr:last-child td { border-bottom: none; }
 .rating { font-weight: 800; font-size: 18px; }
 .win { color: #72e0a6; }
 .loss { color: #ff8585; }
+.player-link { display: inline-flex; align-items: center; gap: 12px; min-width: 0; }
 .player-name { font-weight: 700; }
+.player-avatar {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #343b4b;
+  background: #1a1f2b;
+}
+.player-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #c8d0df;
+  font-weight: 800;
+  font-size: 15px;
+}
 .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 24px 0; }
 .stat { padding: 20px; background: #121620; border: 1px solid #242936; border-radius: 16px; }
 .stat b { display: block; font-size: 28px; margin-top: 6px; }
@@ -33,4 +51,6 @@ tr:last-child td { border-bottom: none; }
   th:nth-child(5), td:nth-child(5) { display:none; }
   .header .muted { display:none; }
   th,td { padding: 12px 10px; }
+  .player-link { gap: 9px; }
+  .player-avatar { width: 34px; height: 34px; flex-basis: 34px; }
 }
