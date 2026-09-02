@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
 export default async function OpenDotaTestPage() {
   const results = await Promise.all(
     players.map(async (player) => {
-      const url = `https://api.opendota.com/api/players/${player.accountId}/matches?game_mode=23&limit=100`;
+      const url = `https://api.opendota.com/api/players/${player.accountId}/matches?game_mode=23&significant=0&limit=100`;
 
       try {
         const response = await fetch(url, { cache: "no-store" });
