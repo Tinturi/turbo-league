@@ -1,4 +1,5 @@
 import "./globals.css";
+import SiteMenu from "@/app/components/SiteMenu";
 
 export const metadata = {
   title: "Turbo League",
@@ -11,7 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <header className="header">
           <a href="/" className="brand">⚡ Turbo League</a>
-          <span className="muted">Dota 2 Turbo Rating</span>
+          <SiteMenu />
         </header>
         <main className="container">{children}</main>
       </body>
