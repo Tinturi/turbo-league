@@ -49,7 +49,7 @@ export default function SiteMenu() {
             position: "absolute",
             top: "calc(100% + 10px)",
             right: 0,
-            width: 210,
+            width: 220,
             padding: 8,
             border: "1px solid #2d3545",
             borderRadius: 14,
@@ -59,9 +59,10 @@ export default function SiteMenu() {
           }}
         >
           {[
-            ["Лидерборд", "/"],
-            ["Регламент", "/rules"],
-            ["Контакты", "/contacts"],
+            ["🏆 Лидерборд", "/"],
+            ["📊 Статистика сезона", "/stats"],
+            ["📜 Регламент", "/rules"],
+            ["✉️ Контакты", "/contacts"],
           ].map(([label, href]) => (
             <a
               key={href}
