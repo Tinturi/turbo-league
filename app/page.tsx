@@ -1,4 +1,8 @@
+import { unstable_noStore as noStore } from "next/cache";
 import { supabase } from "@/lib/supabase";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type Player = {
   id: number;
@@ -10,6 +14,8 @@ type Player = {
 };
 
 export default async function Home() {
+  noStore();
+
   const { data, error } = await supabase
     .from("players")
     .select("id, name, account_id, rating, wins, losses")
