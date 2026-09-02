@@ -17,6 +17,8 @@ type Player = {
   tracking_from: string | null;
 };
 
+const PLACEMENT_MATCHES = 5;
+
 function didPlayerWin(match: OpenDotaMatch) {
   const isRadiant = match.player_slot < 128;
   return isRadiant === match.radiant_win;
@@ -73,10 +75,14 @@ export async function GET(req: NextRequest) {
     }
 
     const matches = (await response.json()) as OpenDotaMatch[];
-    const leagueMatches = matches
+    const allTurboMatches = matches
       .filter((match) => match.game_mode === 23)
       .filter((match) => (match.start_time ?? 0) >= trackingFrom)
       .sort((a, b) => (a.start_time ?? 0) - (b.start_time ?? 0));
+
+    // The first five Turbo matches after tracking_from are placement matches.
+    // They are intentionally excluded from league W/L and rating calculations.
+    const leagueMatches = allTurboMatches.slice(PLACEMENT_MATCHES);
 
     let added = 0;
     let skipped = 0;
@@ -111,6 +117,8 @@ export async function GET(req: NextRequest) {
     summary.push({
       player: player.name,
       ok: errors.length === 0,
+      turboAfterStart: allTurboMatches.length,
+      placementSkipped: Math.min(PLACEMENT_MATCHES, allTurboMatches.length),
       found: leagueMatches.length,
       added,
       skipped,
