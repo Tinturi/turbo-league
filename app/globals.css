@@ -114,6 +114,69 @@ tbody tr:hover { background: rgba(255,255,255,.025); }
 .stat { padding: 20px; background: #121620; border: 1px solid #242936; border-radius: 16px; }
 .stat b { display: block; font-size: 28px; margin-top: 6px; }
 .back { display: inline-block; color: #aab3c5; margin-bottom: 24px; }
+.admin-page {
+  min-height: calc(100vh - 68px);
+  padding: 48px 20px;
+  background:
+    linear-gradient(rgba(7,9,13,.82), rgba(7,9,13,.92)),
+    url('/turbo-bg.svg') center/cover fixed;
+}
+.admin-panel {
+  width: min(920px, 100%);
+  margin: 0 auto;
+  padding: 28px;
+  border: 1px solid #2a3140;
+  border-radius: 20px;
+  background: rgba(10,14,21,.93);
+  box-shadow: 0 24px 80px rgba(0,0,0,.45);
+  backdrop-filter: blur(12px);
+}
+.admin-heading h1 { margin: 4px 0 8px; font-size: 34px; }
+.admin-heading p { margin: 0; color: #aeb7c7; }
+.admin-kicker { color: #e9b84b !important; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .14em; }
+.admin-login { display: grid; gap: 12px; max-width: 420px; margin-top: 28px; }
+.admin-login label { color: #c7cfdb; font-size: 14px; }
+.admin-login input,
+.admin-player-row input {
+  width: 100%;
+  border: 1px solid #343c4e;
+  border-radius: 12px;
+  background: #0d121b;
+  color: #fff;
+  padding: 12px 14px;
+  font: inherit;
+  outline: none;
+}
+.admin-login input:focus,
+.admin-player-row input:focus { border-color: #e9b84b; box-shadow: 0 0 0 3px rgba(233,184,75,.1); }
+.admin-login button,
+.admin-player-row button {
+  border: 1px solid rgba(233,184,75,.45);
+  border-radius: 12px;
+  background: #e9b84b;
+  color: #17120a;
+  padding: 11px 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.admin-login button:disabled,
+.admin-player-row button:disabled { opacity: .55; cursor: default; }
+.admin-player-list { display: grid; gap: 10px; margin-top: 28px; }
+.admin-player-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px 120px;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid #252c39;
+  border-radius: 14px;
+  background: rgba(255,255,255,.02);
+}
+.admin-player-info { min-width: 0; }
+.admin-player-info strong { display: block; margin-bottom: 4px; }
+.admin-player-info span { color: #8f98aa; font-size: 13px; }
+.admin-message { margin: 18px 0 0; color: #e9b84b; }
+.admin-back { display: inline-block; margin-top: 24px; color: #aeb7c7; }
 @media (max-width: 720px) {
   .container { padding-left: 10px; padding-right: 10px; }
   .hero { min-height: calc(100svh - 68px); padding: 28px 18px 110px; background-position: center center; }
@@ -131,4 +194,7 @@ tbody tr:hover { background: rgba(255,255,255,.025); }
   th,td { padding: 12px 10px; }
   .player-link { gap: 9px; }
   .player-avatar { width: 34px; height: 34px; flex-basis: 34px; }
+  .admin-page { padding: 24px 10px; }
+  .admin-panel { padding: 18px; }
+  .admin-player-row { grid-template-columns: 1fr; }
 }
