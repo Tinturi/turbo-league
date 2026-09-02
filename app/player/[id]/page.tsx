@@ -222,7 +222,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
         <div className="match-history-heading">
           <div>
             <h2>История матчей</h2>
-            <p className="muted">Последние матчи, которые учитываются в рейтинге Turbo League.</p>
+            <p className="muted">Нажми на матч, чтобы открыть полный состав и статистику.</p>
           </div>
         </div>
 
@@ -231,67 +231,74 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
             <div className="empty-matches">Учтённых матчей пока нет.</div>
           ) : (
             matchRows.map((match) => (
-              <article className={`match-row ${match.won ? "match-win" : "match-loss"}`} key={match.match_id}>
-                <div className="match-result-block">
-                  <strong>{match.won ? "ПОБЕДА" : "ПОРАЖЕНИЕ"}</strong>
-                  <span>{formatDate(match.start_time)}</span>
-                </div>
-
-                <div className="match-hero-block">
-                  <span className="match-label">Играл на</span>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      marginTop: 3,
-                      minWidth: 0,
-                    }}
-                  >
-                    {match.heroImage ? (
-                      <img
-                        src={match.heroImage}
-                        alt={match.heroName}
-                        width={72}
-                        height={41}
-                        style={{
-                          width: 72,
-                          height: 41,
-                          objectFit: "cover",
-                          borderRadius: 8,
-                          border: "1px solid #3a4353",
-                          boxShadow: "0 5px 14px rgba(0,0,0,.28)",
-                          flex: "0 0 auto",
-                        }}
-                      />
-                    ) : null}
-                    <strong style={{ lineHeight: 1.2 }}>{match.heroName}</strong>
+              <a
+                href={`/match/${match.match_id}`}
+                key={match.match_id}
+                style={{ display: "block", color: "inherit", textDecoration: "none" }}
+                title="Открыть подробности матча"
+              >
+                <article className={`match-row ${match.won ? "match-win" : "match-loss"}`}>
+                  <div className="match-result-block">
+                    <strong>{match.won ? "ПОБЕДА" : "ПОРАЖЕНИЕ"}</strong>
+                    <span>{formatDate(match.start_time)}</span>
                   </div>
-                </div>
 
-                <div className="opponents-block">
-                  <span className="match-label">Против него</span>
-                  <div className="opponent-list">
-                    {match.opponents.length > 0 ? (
-                      match.opponents.map((opponent, index) => (
-                        <span className="opponent-chip" key={`${match.match_id}-${opponent.heroId}-${index}`}>
-                          {opponent.name}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="muted">Состав пока недоступен</span>
-                    )}
+                  <div className="match-hero-block">
+                    <span className="match-label">Играл на</span>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        marginTop: 3,
+                        minWidth: 0,
+                      }}
+                    >
+                      {match.heroImage ? (
+                        <img
+                          src={match.heroImage}
+                          alt={match.heroName}
+                          width={72}
+                          height={41}
+                          style={{
+                            width: 72,
+                            height: 41,
+                            objectFit: "cover",
+                            borderRadius: 8,
+                            border: "1px solid #3a4353",
+                            boxShadow: "0 5px 14px rgba(0,0,0,.28)",
+                            flex: "0 0 auto",
+                          }}
+                        />
+                      ) : null}
+                      <strong style={{ lineHeight: 1.2 }}>{match.heroName}</strong>
+                    </div>
                   </div>
-                </div>
 
-                <div className="rating-change-block">
-                  <span className="match-label">Рейтинг</span>
-                  <strong className={match.rating_delta > 0 ? "win" : "loss"}>
-                    {match.rating_delta > 0 ? "+" : ""}{match.rating_delta}
-                  </strong>
-                  <span className="muted">→ {match.rating_after}</span>
-                </div>
-              </article>
+                  <div className="opponents-block">
+                    <span className="match-label">Против него</span>
+                    <div className="opponent-list">
+                      {match.opponents.length > 0 ? (
+                        match.opponents.map((opponent, index) => (
+                          <span className="opponent-chip" key={`${match.match_id}-${opponent.heroId}-${index}`}>
+                            {opponent.name}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="muted">Состав пока недоступен</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rating-change-block">
+                    <span className="match-label">Рейтинг</span>
+                    <strong className={match.rating_delta > 0 ? "win" : "loss"}>
+                      {match.rating_delta > 0 ? "+" : ""}{match.rating_delta}
+                    </strong>
+                    <span className="muted">→ {match.rating_after}</span>
+                  </div>
+                </article>
+              </a>
             ))
           )}
         </div>
