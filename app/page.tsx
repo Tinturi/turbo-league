@@ -1,5 +1,6 @@
 import { unstable_noStore as noStore } from "next/cache";
 import { supabase } from "@/lib/supabase";
+import RefreshCountdown from "@/app/components/RefreshCountdown";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -69,8 +70,11 @@ export default async function Home() {
   return (
     <>
       <section className="hero">
-        <h1>Turbo League</h1>
-        <p>Рейтинг игроков по матчам Dota 2 Turbo.</p>
+        <div className="hero-content">
+          <h1>Turbo League</h1>
+          <p>Рейтинг игроков по матчам Dota 2 Turbo.</p>
+          <RefreshCountdown />
+        </div>
       </section>
 
       <div className="card">
@@ -134,5 +138,3 @@ export default async function Home() {
     </>
   );
 }
-
-// Redeploy trigger after Netlify plan upgrade.
