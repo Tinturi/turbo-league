@@ -134,3 +134,5 @@ export default async function Home() {
     </>
   );
 }
+
+// Redeploy trigger after Netlify plan upgrade.
