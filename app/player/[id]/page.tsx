@@ -44,6 +44,12 @@ type MatchDetails = {
 type Hero = {
   id: number;
   localized_name?: string;
+  img?: string;
+};
+
+type HeroInfo = {
+  name: string;
+  image: string | null;
 };
 
 async function getAvatar(accountId: number) {
@@ -59,22 +65,29 @@ async function getAvatar(accountId: number) {
   }
 }
 
-async function getHeroNames() {
+async function getHeroes() {
   try {
     const response = await fetch("https://api.opendota.com/api/constants/heroes", {
       next: { revalidate: 86400 },
     });
-    if (!response.ok) return new Map<number, string>();
+    if (!response.ok) return new Map<number, HeroInfo>();
+
     const data = (await response.json()) as Record<string, Hero>;
     return new Map(
-      Object.values(data).map((hero) => [hero.id, hero.localized_name ?? `Hero ${hero.id}`]),
+      Object.values(data).map((hero) => [
+        hero.id,
+        {
+          name: hero.localized_name ?? `Hero ${hero.id}`,
+          image: hero.img ? `https://cdn.cloudflare.steamstatic.com${hero.img}` : null,
+        },
+      ]),
     );
   } catch {
-    return new Map<number, string>();
+    return new Map<number, HeroInfo>();
   }
 }
 
-async function getOpponents(matchId: number, accountId: number, heroNames: Map<number, string>) {
+async function getOpponents(matchId: number, accountId: number, heroes: Map<number, HeroInfo>) {
   try {
     const response = await fetch(`https://api.opendota.com/api/matches/${matchId}`, {
       next: { revalidate: 86400 },
@@ -91,10 +104,14 @@ async function getOpponents(matchId: number, accountId: number, heroNames: Map<n
       .filter((player) => player.player_slot != null)
       .filter((player) => (Number(player.player_slot) < 128) !== playerIsRadiant)
       .slice(0, 5)
-      .map((player) => ({
-        heroId: player.hero_id ?? 0,
-        name: heroNames.get(player.hero_id ?? 0) ?? `Hero ${player.hero_id ?? "?"}`,
-      }));
+      .map((player) => {
+        const heroId = player.hero_id ?? 0;
+        const hero = heroes.get(heroId);
+        return {
+          heroId,
+          name: hero?.name ?? `Hero ${player.hero_id ?? "?"}`,
+        };
+      });
   } catch {
     return [];
   }
@@ -117,7 +134,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
   const playerId = Number(id);
   if (!Number.isFinite(playerId)) notFound();
 
-  const [{ data: playerData }, { data: matchData }, heroNames] = await Promise.all([
+  const [{ data: playerData }, { data: matchData }, heroes] = await Promise.all([
     supabase
       .from("players")
       .select("id,name,account_id,rating,wins,losses")
@@ -130,7 +147,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
       .eq("player_id", playerId)
       .order("start_time", { ascending: false })
       .limit(12),
-    getHeroNames(),
+    getHeroes(),
   ]);
 
   if (!playerData) notFound();
@@ -140,11 +157,15 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
   const avatar = await getAvatar(player.account_id);
 
   const matchRows = await Promise.all(
-    matches.map(async (match) => ({
-      ...match,
-      heroName: heroNames.get(match.hero_id ?? 0) ?? `Hero ${match.hero_id ?? "?"}`,
-      opponents: await getOpponents(match.match_id, player.account_id, heroNames),
-    })),
+    matches.map(async (match) => {
+      const hero = heroes.get(match.hero_id ?? 0);
+      return {
+        ...match,
+        heroName: hero?.name ?? `Hero ${match.hero_id ?? "?"}`,
+        heroImage: hero?.image ?? null,
+        opponents: await getOpponents(match.match_id, player.account_id, heroes),
+      };
+    }),
   );
 
   const total = player.wins + player.losses;
@@ -218,7 +239,34 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
 
                 <div className="match-hero-block">
                   <span className="match-label">Играл на</span>
-                  <strong>{match.heroName}</strong>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      marginTop: 3,
+                      minWidth: 0,
+                    }}
+                  >
+                    {match.heroImage ? (
+                      <img
+                        src={match.heroImage}
+                        alt={match.heroName}
+                        width={72}
+                        height={41}
+                        style={{
+                          width: 72,
+                          height: 41,
+                          objectFit: "cover",
+                          borderRadius: 8,
+                          border: "1px solid #3a4353",
+                          boxShadow: "0 5px 14px rgba(0,0,0,.28)",
+                          flex: "0 0 auto",
+                        }}
+                      />
+                    ) : null}
+                    <strong style={{ lineHeight: 1.2 }}>{match.heroName}</strong>
+                  </div>
                 </div>
 
                 <div className="opponents-block">
