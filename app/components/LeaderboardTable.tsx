@@ -23,6 +23,21 @@ function getWinrate(player: PlayerRow) {
   return total ? (player.wins / total) * 100 : 0;
 }
 
+const sortButtonStyle = {
+  appearance: "none" as const,
+  border: 0,
+  padding: 0,
+  margin: 0,
+  background: "transparent",
+  color: "inherit",
+  font: "inherit",
+  fontWeight: 800,
+  letterSpacing: "inherit",
+  textTransform: "inherit" as const,
+  cursor: "pointer",
+  whiteSpace: "nowrap" as const,
+};
+
 export default function LeaderboardTable({ players }: { players: PlayerRow[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("rating");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
@@ -46,7 +61,6 @@ export default function LeaderboardTable({ players }: { players: PlayerRow[] }) 
       const difference = sortDirection === "desc" ? bValue - aValue : aValue - bValue;
       if (difference !== 0) return difference;
 
-      // Stable, useful tie-breakers: rating first, then name.
       if (b.rating !== a.rating) return b.rating - a.rating;
       return a.name.localeCompare(b.name, "ru");
     });
@@ -67,6 +81,13 @@ export default function LeaderboardTable({ players }: { players: PlayerRow[] }) 
     return sortDirection === "desc" ? "↓" : "↑";
   }
 
+  function sortStyle(key: SortKey) {
+    return {
+      ...sortButtonStyle,
+      color: sortKey === key ? "#e9b84b" : "inherit",
+    };
+  }
+
   return (
     <div className="card leaderboard-card">
       <table>
@@ -77,7 +98,7 @@ export default function LeaderboardTable({ players }: { players: PlayerRow[] }) 
             <th>
               <button
                 type="button"
-                className={`sort-button ${sortKey === "rating" ? "active" : ""}`}
+                style={sortStyle("rating")}
                 onClick={() => changeSort("rating")}
                 title="Сортировать по рейтингу"
               >
@@ -87,7 +108,7 @@ export default function LeaderboardTable({ players }: { players: PlayerRow[] }) 
             <th>
               <button
                 type="button"
-                className={`sort-button ${sortKey === "matches" ? "active" : ""}`}
+                style={sortStyle("matches")}
                 onClick={() => changeSort("matches")}
                 title="Сортировать по количеству матчей"
               >
@@ -98,7 +119,7 @@ export default function LeaderboardTable({ players }: { players: PlayerRow[] }) 
             <th>
               <button
                 type="button"
-                className={`sort-button ${sortKey === "winrate" ? "active" : ""}`}
+                style={sortStyle("winrate")}
                 onClick={() => changeSort("winrate")}
                 title="Сортировать по винрейту"
               >
@@ -137,7 +158,7 @@ export default function LeaderboardTable({ players }: { players: PlayerRow[] }) 
                 </td>
 
                 <td className="rating">{player.rating}</td>
-                <td className="matches-count">{total}</td>
+                <td style={{ fontWeight: 800 }}>{total}</td>
 
                 <td>
                   <span className="win">{player.wins}W</span>
