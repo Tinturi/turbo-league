@@ -16,6 +16,8 @@ const START_RATING = 0;
 const CALIBRATION_MATCHES = 5;
 const CALIBRATION_DELTA = 50;
 const REGULAR_DELTA = 25;
+const DOUBLE_DOWN_WINDOW_MS = 10 * 60 * 1000;
+const DOUBLE_DOWN_PENDING_TTL_MS = 3 * 60 * 60 * 1000;
 const CONCURRENCY = 3;
 const OPENDOTA_TIMEOUT_MS = 20000;
 const OPENDOTA_ATTEMPTS = 3;
@@ -29,9 +31,22 @@ function didPlayerWin(match) {
   return isRadiant === Boolean(match.radiant_win);
 }
 
-function deltaForMatch(won, seasonMatchIndex) {
+function deltaForMatch(won, seasonMatchIndex, doubleDown = false) {
   const magnitude = seasonMatchIndex < CALIBRATION_MATCHES ? CALIBRATION_DELTA : REGULAR_DELTA;
-  return won ? magnitude : -magnitude;
+  const multiplier = doubleDown ? 2 : 1;
+  return won ? magnitude * multiplier : -magnitude * multiplier;
+}
+
+function getWeekStart(date = new Date()) {
+  const d = new Date(date);
+  const saturday = 6;
+  let daysBack = (d.getUTCDay() - saturday + 7) % 7;
+  let boundary = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - daysBack, 5, 0, 0, 0));
+  if (d.getTime() < boundary.getTime()) {
+    daysBack += 7;
+    boundary = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - daysBack, 5, 0, 0, 0));
+  }
+  return boundary;
 }
 
 async function fetchOpenDotaMatches(accountId) {
@@ -58,19 +73,119 @@ async function fetchOpenDotaMatches(accountId) {
   throw new Error(lastError);
 }
 
+async function attachDoubleDowns(playerId, allTurboMatches) {
+  const { data: activationRows, error } = await supabaseAdmin
+    .from("double_down_activations")
+    .select("id,activated_at,status,match_id,week_start")
+    .eq("player_id", playerId)
+    .order("activated_at", { ascending: true });
+
+  if (error) throw new Error(`Double Down lookup: ${error.message}`);
+
+  const activations = activationRows ?? [];
+  const usedMatchIds = new Set(
+    activations.filter((row) => row.status === "used" && row.match_id != null).map((row) => Number(row.match_id)),
+  );
+
+  for (const activation of activations.filter((row) => row.status === "pending")) {
+    const activatedMs = new Date(activation.activated_at).getTime();
+    const candidate = allTurboMatches.find((match) => {
+      const matchId = Number(match.match_id);
+      const startMs = Number(match.start_time ?? 0) * 1000;
+      return !usedMatchIds.has(matchId) && startMs <= activatedMs && activatedMs <= startMs + DOUBLE_DOWN_WINDOW_MS;
+    });
+
+    if (candidate) {
+      const matchId = Number(candidate.match_id);
+      const { error: updateError } = await supabaseAdmin
+        .from("double_down_activations")
+        .update({ status: "used", match_id: matchId })
+        .eq("id", activation.id)
+        .eq("status", "pending");
+      if (updateError) throw new Error(`Double Down attach ${activation.id}: ${updateError.message}`);
+      activation.status = "used";
+      activation.match_id = matchId;
+      usedMatchIds.add(matchId);
+      console.log(`  🔥 Double Down -> match ${matchId}`);
+    } else if (Date.now() - activatedMs > DOUBLE_DOWN_PENDING_TTL_MS) {
+      const { error: expireError } = await supabaseAdmin
+        .from("double_down_activations")
+        .update({ status: "expired" })
+        .eq("id", activation.id)
+        .eq("status", "pending");
+      if (expireError) throw new Error(`Double Down expire ${activation.id}: ${expireError.message}`);
+      activation.status = "expired";
+      console.log(`  ↩ Double Down ${activation.id} expired and refunded`);
+    }
+  }
+
+  return usedMatchIds;
+}
+
+async function grantLossStreakBonuses(playerId, allTurboMatches) {
+  const weekStart = getWeekStart();
+  const weekStartUnix = Math.floor(weekStart.getTime() / 1000);
+  const weeklyMatches = allTurboMatches.filter((match) => Number(match.start_time ?? 0) >= weekStartUnix);
+  let consecutiveLosses = 0;
+  let granted = 0;
+
+  for (const match of weeklyMatches) {
+    const won = didPlayerWin(match);
+    if (won) {
+      consecutiveLosses = 0;
+      continue;
+    }
+
+    consecutiveLosses += 1;
+    if (consecutiveLosses % 3 !== 0) continue;
+
+    const { error } = await supabaseAdmin.from("double_down_bonuses").upsert(
+      {
+        player_id: playerId,
+        week_start: weekStart.toISOString(),
+        source_match_id: Number(match.match_id),
+        reason: "three_losses",
+      },
+      { onConflict: "player_id,source_match_id", ignoreDuplicates: true },
+    );
+    if (error) throw new Error(`Double Down bonus ${match.match_id}: ${error.message}`);
+    granted += 1;
+  }
+
+  return { weeklyMatches, bonusMilestones: granted };
+}
+
+function findRepeatedHeroes(weeklyMatches) {
+  const counts = new Map();
+  for (const match of weeklyMatches) {
+    const heroId = match.hero_id == null ? null : Number(match.hero_id);
+    if (!heroId) continue;
+    counts.set(heroId, (counts.get(heroId) ?? 0) + 1);
+  }
+  return [...counts.entries()].filter(([, count]) => count > 1).map(([heroId, count]) => ({ heroId, count }));
+}
+
 async function syncPlayer(player) {
   console.log(`\n▶ ${player.name} (${player.account_id})`);
 
   const { data: existingRows, error: existingError } = await supabaseAdmin
     .from("matches")
-    .select("match_id,start_time,won,rating_delta,rating_after")
+    .select("match_id,start_time,hero_id,won,rating_delta,rating_after")
     .eq("player_id", player.id)
     .gte("start_time", SEASON_START_ISO)
     .order("start_time", { ascending: true });
 
   if (existingError) throw new Error(`Supabase existing matches: ${existingError.message}`);
-
   const existingSeasonMatches = existingRows ?? [];
+
+  const rawMatches = await fetchOpenDotaMatches(player.account_id);
+  const allTurboMatches = rawMatches
+    .filter((match) => Number(match.game_mode) === 23)
+    .filter((match) => Number(match.start_time ?? 0) >= SEASON_START_UNIX)
+    .sort((a, b) => Number(a.start_time ?? 0) - Number(b.start_time ?? 0));
+
+  const doubleDownMatchIds = await attachDoubleDowns(player.id, allTurboMatches);
+
   let currentRating = START_RATING;
   let wins = 0;
   let losses = 0;
@@ -78,7 +193,7 @@ async function syncPlayer(player) {
   for (let index = 0; index < existingSeasonMatches.length; index += 1) {
     const row = existingSeasonMatches[index];
     const won = Boolean(row.won);
-    const expectedDelta = deltaForMatch(won, index);
+    const expectedDelta = deltaForMatch(won, index, doubleDownMatchIds.has(Number(row.match_id)));
     currentRating += expectedDelta;
     if (won) wins += 1; else losses += 1;
 
@@ -92,12 +207,6 @@ async function syncPlayer(player) {
     }
   }
 
-  const rawMatches = await fetchOpenDotaMatches(player.account_id);
-  const allTurboMatches = rawMatches
-    .filter((match) => Number(match.game_mode) === 23)
-    .filter((match) => Number(match.start_time ?? 0) >= SEASON_START_UNIX)
-    .sort((a, b) => Number(a.start_time ?? 0) - Number(b.start_time ?? 0));
-
   const existingMatchIds = new Set(existingSeasonMatches.map((row) => Number(row.match_id)));
   const newMatches = allTurboMatches.filter((match) => !existingMatchIds.has(Number(match.match_id)));
 
@@ -105,11 +214,12 @@ async function syncPlayer(player) {
   for (const match of newMatches) {
     const won = didPlayerWin(match);
     const seasonMatchIndex = existingSeasonMatches.length + added;
-    const ratingDelta = deltaForMatch(won, seasonMatchIndex);
+    const matchId = Number(match.match_id);
+    const ratingDelta = deltaForMatch(won, seasonMatchIndex, doubleDownMatchIds.has(matchId));
     currentRating += ratingDelta;
 
     const { error: insertError } = await supabaseAdmin.from("matches").insert({
-      match_id: Number(match.match_id),
+      match_id: matchId,
       player_id: player.id,
       start_time: match.start_time ? new Date(Number(match.start_time) * 1000).toISOString() : null,
       hero_id: match.hero_id == null ? null : Number(match.hero_id),
@@ -123,6 +233,10 @@ async function syncPlayer(player) {
     if (won) wins += 1; else losses += 1;
     added += 1;
   }
+
+  const { weeklyMatches, bonusMilestones } = await grantLossStreakBonuses(player.id, allTurboMatches);
+  const repeatedHeroes = findRepeatedHeroes(weeklyMatches);
+  if (repeatedHeroes.length) console.log(`  ⚠ Повтор героев на неделе: ${JSON.stringify(repeatedHeroes)}`);
 
   const { error: playerUpdateError } = await supabaseAdmin
     .from("players")
@@ -142,6 +256,9 @@ async function syncPlayer(player) {
     regularPlayed: Math.max(0, totalSeasonMatches - CALIBRATION_MATCHES),
     newFound: newMatches.length,
     added,
+    doubleDownMatches: doubleDownMatchIds.size,
+    bonusMilestones,
+    repeatedHeroes,
     rating: currentRating,
     wins,
     losses,
