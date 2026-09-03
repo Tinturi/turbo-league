@@ -12,6 +12,7 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseSecretKey, {
 
 const SEASON_START_ISO = "2026-09-03T20:18:00.000Z";
 const SEASON_START_UNIX = Math.floor(new Date(SEASON_START_ISO).getTime() / 1000);
+const START_RATING = 0;
 const CALIBRATION_MATCHES = 5;
 const CALIBRATION_DELTA = 50;
 const REGULAR_DELTA = 25;
@@ -45,7 +46,6 @@ async function fetchOpenDotaMatches(accountId) {
       });
 
       if (response.ok) return await response.json();
-
       lastError = `OpenDota HTTP ${response.status}`;
       if (response.status !== 429 && response.status < 500) break;
     } catch (error) {
@@ -71,10 +71,7 @@ async function syncPlayer(player) {
   if (existingError) throw new Error(`Supabase existing matches: ${existingError.message}`);
 
   const existingSeasonMatches = existingRows ?? [];
-  const oldSeasonDelta = existingSeasonMatches.reduce((sum, row) => sum + Number(row.rating_delta ?? 0), 0);
-  const baselineRating = Number(player.rating) - oldSeasonDelta;
-
-  let currentRating = baselineRating;
+  let currentRating = START_RATING;
   let wins = 0;
   let losses = 0;
 
@@ -123,7 +120,6 @@ async function syncPlayer(player) {
     });
 
     if (insertError) throw new Error(`Match ${match.match_id}: ${insertError.message}`);
-
     if (won) wins += 1; else losses += 1;
     added += 1;
   }
@@ -139,6 +135,7 @@ async function syncPlayer(player) {
   const result = {
     player: player.name,
     season: 3,
+    startRating: START_RATING,
     turboAfterStart: allTurboMatches.length,
     seasonMatches: totalSeasonMatches,
     calibrationPlayed: Math.min(totalSeasonMatches, CALIBRATION_MATCHES),
