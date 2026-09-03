@@ -2,6 +2,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { notFound } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { SEASON_START_ISO } from "@/lib/season";
+import DoubleDownCard from "@/app/components/DoubleDownCard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -164,6 +165,8 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
         <div className="stat">Поражения<b className="loss">{losses}</b></div>
         <div className="stat">Winrate<b>{winrate}%</b></div>
       </section>
+
+      <DoubleDownCard playerId={player.id} />
 
       <section className="form-card">
         <div><div className="form-title">Последние игры Season 3</div><div className="muted">{streak.type ? <>Текущая серия: <strong className={streak.type === "W" ? "win" : "loss"}>{streak.type === "W" ? "🔥" : "💀"} {streak.type}{streak.count}</strong></> : "Форма игрока в матчах третьего сезона"}</div></div>
