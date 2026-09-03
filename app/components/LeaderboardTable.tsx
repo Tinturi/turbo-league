@@ -1,14 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type PlayerRow = {
   id: number;
   name: string;
+  account_id: number;
   rating: number;
   wins: number;
   losses: number;
-  avatar: string | null;
 };
 
 type SortKey = "rating" | "matches" | "winrate";
@@ -21,6 +21,40 @@ function getTotal(player: PlayerRow) {
 function getWinrate(player: PlayerRow) {
   const total = getTotal(player);
   return total ? (player.wins / total) * 100 : 0;
+}
+
+function PlayerAvatar({ player }: { player: PlayerRow }) {
+  const [avatar, setAvatar] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAvatar() {
+      try {
+        const response = await fetch(`/api/avatar/${player.account_id}`);
+        if (!response.ok) return;
+        const data = (await response.json()) as { avatar?: string | null };
+        if (!cancelled) setAvatar(data.avatar ?? null);
+      } catch {
+        // Keep the fallback avatar if OpenDota is temporarily unavailable.
+      }
+    }
+
+    void loadAvatar();
+    return () => {
+      cancelled = true;
+    };
+  }, [player.account_id]);
+
+  if (avatar) {
+    return <img className="player-avatar" src={avatar} alt="" width={40} height={40} />;
+  }
+
+  return (
+    <span className="player-avatar player-avatar-fallback">
+      {player.name.slice(0, 1).toUpperCase()}
+    </span>
+  );
 }
 
 const sortButtonStyle = {
@@ -121,11 +155,7 @@ export default function LeaderboardTable({ players }: { players: PlayerRow[] }) 
                 <td>
                   <a className="player-link" href={`/player/${player.id}`}>
                     <span style={{ position: "relative", display: "inline-flex" }}>
-                      {player.avatar ? (
-                        <img className="player-avatar" src={player.avatar} alt="" width={40} height={40} />
-                      ) : (
-                        <span className="player-avatar player-avatar-fallback">{player.name.slice(0, 1).toUpperCase()}</span>
-                      )}
+                      <PlayerAvatar player={player} />
                       {rankMedal ? <span title={`Место по рейтингу: ${leagueRank}`} style={{ position: "absolute", right: -8, top: -10, fontSize: leagueRank === 1 ? 18 : 15, filter: "drop-shadow(0 2px 4px rgba(0,0,0,.8))" }}>{rankMedal}</span> : null}
                     </span>
                     <span className="player-name">{player.name}</span>
