@@ -17,9 +17,6 @@ type Player = {
 };
 
 const PLACEMENT_MATCHES = 5;
-const CONCURRENCY = 5;
-const OPENDOTA_TIMEOUT_MS = 8000;
-const OPENDOTA_ATTEMPTS = 2;
 
 function didPlayerWin(match: OpenDotaMatch) {
   const isRadiant = match.player_slot < 128;
@@ -30,15 +27,11 @@ async function fetchOpenDotaMatches(accountId: number) {
   const url = `https://api.opendota.com/api/players/${accountId}/matches?game_mode=23&significant=0&limit=100`;
   let lastStatus = 0;
 
-  for (let attempt = 0; attempt < OPENDOTA_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const response = await fetch(url, {
         cache: "no-store",
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "Turbo-League-S2/1.0",
-        },
-        signal: AbortSignal.timeout(OPENDOTA_TIMEOUT_MS),
+        signal: AbortSignal.timeout(10000),
       });
       lastStatus = response.status;
 
@@ -51,8 +44,8 @@ async function fetchOpenDotaMatches(accountId: number) {
       lastStatus = 0;
     }
 
-    if (attempt + 1 < OPENDOTA_ATTEMPTS) {
-      await new Promise((resolve) => setTimeout(resolve, 750));
+    if (attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
     }
   }
 
@@ -78,19 +71,47 @@ export default async (req: Request) => {
     return;
   }
 
+  const url = new URL(req.url);
+  const playerId = Number(url.searchParams.get("playerId"));
+
+  if (!Number.isInteger(playerId) || playerId <= 0) {
+    console.error("Background sync missing valid playerId");
+    return;
+  }
+
   const supabaseAdmin = createClient(supabaseUrl, supabaseSecretKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  async function syncPlayer(player: Player) {
+  try {
+    const { data: playerRow, error: playerError } = await supabaseAdmin
+      .from("players")
+      .select("id,name,account_id,tracking_from")
+      .eq("id", playerId)
+      .eq("active", true)
+      .maybeSingle();
+
+    if (playerError) {
+      console.error(`Player ${playerId} lookup failed: ${playerError.message}`);
+      return;
+    }
+
+    if (!playerRow) {
+      console.log(`Player ${playerId} is missing or inactive`);
+      return;
+    }
+
+    const player = playerRow as Player;
     const trackingFrom = player.tracking_from
       ? Math.floor(new Date(player.tracking_from).getTime() / 1000)
       : 0;
 
+    console.log(`Sync start: ${player.name} (${player.account_id})`);
+
     const result = await fetchOpenDotaMatches(player.account_id);
     if (!result.matches) {
-      console.warn(`${player.name}: ${result.error}`);
-      return { player: player.name, ok: false, error: result.error };
+      console.error(`Sync failed: ${player.name}: ${result.error}`);
+      return;
     }
 
     const allTurboMatches = result.matches
@@ -106,16 +127,14 @@ export default async (req: Request) => {
       .eq("player_id", player.id);
 
     if (existingError) {
-      return {
-        player: player.name,
-        ok: false,
-        error: `Existing matches lookup failed: ${existingError.message}`,
-      };
+      console.error(`Sync failed: ${player.name}: ${existingError.message}`);
+      return;
     }
 
     const existingMatchIds = new Set(
       (existingRows ?? []).map((row) => Number(row.match_id)),
     );
+
     const newMatches = leagueMatches.filter(
       (match) => !existingMatchIds.has(match.match_id),
     );
@@ -124,7 +143,6 @@ export default async (req: Request) => {
     const errors: string[] = [];
 
     for (const match of newMatches) {
-      const won = didPlayerWin(match);
       const { data: applied, error: rpcError } = await supabaseAdmin.rpc(
         "apply_turbo_match",
         {
@@ -134,7 +152,7 @@ export default async (req: Request) => {
             ? new Date(match.start_time * 1000).toISOString()
             : null,
           p_hero_id: match.hero_id ?? null,
-          p_won: won,
+          p_won: didPlayerWin(match),
           p_raw: match,
         },
       );
@@ -143,54 +161,11 @@ export default async (req: Request) => {
       else if (applied === true) added += 1;
     }
 
-    const playerSummary = {
-      player: player.name,
-      ok: errors.length === 0,
-      turboAfterStart: allTurboMatches.length,
-      placementSkipped: Math.min(PLACEMENT_MATCHES, allTurboMatches.length),
-      found: leagueMatches.length,
-      alreadyImported: leagueMatches.length - newMatches.length,
-      newFound: newMatches.length,
-      added,
-      errors,
-    };
-
-    console.log(`Player sync: ${JSON.stringify(playerSummary)}`);
-    return playerSummary;
-  }
-
-  try {
-    const { data, error } = await supabaseAdmin
-      .from("players")
-      .select("id,name,account_id,tracking_from")
-      .eq("active", true)
-      .order("id");
-
-    if (error) {
-      console.error(`Background sync players lookup failed: ${error.message}`);
-      return;
-    }
-
-    const players = (data ?? []) as Player[];
-    const summary: Awaited<ReturnType<typeof syncPlayer>>[] = [];
-
-    for (let i = 0; i < players.length; i += CONCURRENCY) {
-      const batch = players.slice(i, i + CONCURRENCY);
-      const batchResults = await Promise.all(batch.map(syncPlayer));
-      summary.push(...batchResults);
-    }
-
-    const addedTotal = summary.reduce(
-      (total, item) => total + ("added" in item ? Number(item.added ?? 0) : 0),
-      0,
-    );
-    const failedTotal = summary.filter((item) => item.ok === false).length;
-
     console.log(
-      `Turbo League background sync completed: players=${players.length}, added=${addedTotal}, failed=${failedTotal}; ${JSON.stringify(summary)}`,
+      `Sync completed: ${player.name}; turbo=${allTurboMatches.length}; rated=${leagueMatches.length}; new=${newMatches.length}; added=${added}; errors=${errors.length}${errors.length ? `; ${errors.join(" | ")}` : ""}`,
     );
   } catch (error) {
-    console.error("Turbo League background sync failed", error);
+    console.error(`Player ${playerId} background sync crashed`, error);
   }
 };
 
