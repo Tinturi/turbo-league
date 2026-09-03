@@ -15,35 +15,6 @@ type Player = {
   losses: number;
 };
 
-type OpenDotaPlayer = {
-  profile?: {
-    avatar?: string | null;
-    avatarmedium?: string | null;
-    avatarfull?: string | null;
-  };
-};
-
-async function getAvatar(accountId: number) {
-  try {
-    const response = await fetch(
-      `https://api.opendota.com/api/players/${accountId}`,
-      { cache: "no-store" },
-    );
-
-    if (!response.ok) return null;
-
-    const player = (await response.json()) as OpenDotaPlayer;
-    return (
-      player.profile?.avatarfull ??
-      player.profile?.avatarmedium ??
-      player.profile?.avatar ??
-      null
-    );
-  } catch {
-    return null;
-  }
-}
-
 export default async function Home() {
   noStore();
 
@@ -64,17 +35,13 @@ export default async function Home() {
   }
 
   const players = (data ?? []) as Player[];
-  const avatars = await Promise.all(
-    players.map((player) => getAvatar(player.account_id)),
-  );
-
-  const leaderboardPlayers = players.map((player, index) => ({
+  const leaderboardPlayers = players.map((player) => ({
     id: player.id,
     name: player.name,
+    account_id: player.account_id,
     rating: player.rating,
     wins: player.wins,
     losses: player.losses,
-    avatar: avatars[index],
   }));
 
   return (
