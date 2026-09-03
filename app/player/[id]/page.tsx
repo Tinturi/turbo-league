@@ -1,6 +1,7 @@
 import { unstable_noStore as noStore } from "next/cache";
 import { notFound } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { SEASON_START_ISO } from "@/lib/season";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -78,11 +79,11 @@ function bestWinStreak(matches: LeagueMatch[]) {
 
 function RatingChart({ matches }: { matches: LeagueMatch[] }) {
   const ordered = [...matches].sort((a, b) => new Date(a.start_time ?? 0).getTime() - new Date(b.start_time ?? 0).getTime());
-  if (!ordered.length) return <div className="muted">График появится после первого зачётного матча.</div>;
+  if (!ordered.length) return <div className="muted">График появится после первого зачётного матча Season 3.</div>;
   const values = ordered.map((match) => match.rating_after);
-  const min = Math.min(...values) - 25;
-  const max = Math.max(...values) + 25;
-  const range = Math.max(50, max - min);
+  const min = Math.min(...values) - 50;
+  const max = Math.max(...values) + 50;
+  const range = Math.max(100, max - min);
   const width = 900;
   const height = 220;
   const padding = 24;
@@ -101,7 +102,7 @@ function RatingChart({ matches }: { matches: LeagueMatch[] }) {
           return <circle key={ordered[index].match_id} cx={x} cy={y} r="5" fill={ordered[index].won ? "#72e0a6" : "#ff8585"}><title>{`${value} · ${ordered[index].won ? "Победа" : "Поражение"} · ${formatDate(ordered[index].start_time)}`}</title></circle>;
         })}
       </svg>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, color: "#8f98aa", fontSize: 12 }}><span>Старт</span><strong style={{ color: "#e9b84b" }}>Сейчас: {values.at(-1)}</strong></div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, color: "#8f98aa", fontSize: 12 }}><span>Старт Season 3</span><strong style={{ color: "#e9b84b" }}>Сейчас: {values.at(-1)}</strong></div>
     </div>
   );
 }
@@ -114,7 +115,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
 
   const [{ data: playerData }, { data: matchData }, heroes] = await Promise.all([
     supabase.from("players").select("id,name,account_id,rating,wins,losses").eq("id", playerId).eq("active", true).single(),
-    supabase.from("matches").select("match_id,start_time,hero_id,won,rating_delta,rating_after").eq("player_id", playerId).order("start_time", { ascending: false }),
+    supabase.from("matches").select("match_id,start_time,hero_id,won,rating_delta,rating_after").eq("player_id", playerId).gte("start_time", SEASON_START_ISO).order("start_time", { ascending: false }),
     getHeroes(),
   ]);
 
@@ -129,13 +130,17 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
     return { ...match, heroName: hero?.name ?? `Hero ${match.hero_id ?? "?"}`, heroImage: hero?.image ?? null, opponents: await getOpponents(match.match_id, player.account_id, heroes) };
   }));
 
-  const total = player.wins + player.losses;
-  const winrateValue = total ? (player.wins / total) * 100 : 0;
+  const wins = allMatches.filter((match) => match.won).length;
+  const losses = allMatches.length - wins;
+  const total = allMatches.length;
+  const winrateValue = total ? (wins / total) * 100 : 0;
   const winrate = winrateValue.toFixed(1);
   const recent = [...matches].reverse();
   const streak = currentStreak(allMatches);
   const bestStreak = bestWinStreak(allMatches);
-  const peakRating = allMatches.reduce((peak, match) => Math.max(peak, match.rating_after), player.rating);
+  const orderedForPeak = [...allMatches].sort((a, b) => new Date(a.start_time ?? 0).getTime() - new Date(b.start_time ?? 0).getTime());
+  const baselineRating = orderedForPeak.length ? orderedForPeak[0].rating_after - orderedForPeak[0].rating_delta : player.rating;
+  const peakRating = orderedForPeak.reduce((peak, match) => Math.max(peak, match.rating_after), baselineRating);
 
   const achievements = [
     total >= 10 ? ["⚔️", "Ветеран", "10+ матчей в сезоне"] : null,
@@ -150,34 +155,34 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
       <a className="back" href="/">← Назад к рейтингу</a>
       <section className="profile-head">
         {avatar ? <img className="profile-avatar" src={avatar} alt="" /> : <div className="profile-avatar profile-avatar-fallback">{player.name.slice(0, 1)}</div>}
-        <div><div className="muted">Профиль игрока</div><h1>{player.name}</h1><div className="muted">OpenDota ID: {player.account_id}</div></div>
+        <div><div className="muted">Профиль игрока · Season 3</div><h1>{player.name}</h1><div className="muted">OpenDota ID: {player.account_id}</div></div>
       </section>
 
       <section className="profile-stats">
         <div className="stat">Рейтинг<b>{player.rating}</b></div>
-        <div className="stat">Победы<b className="win">{player.wins}</b></div>
-        <div className="stat">Поражения<b className="loss">{player.losses}</b></div>
+        <div className="stat">Победы<b className="win">{wins}</b></div>
+        <div className="stat">Поражения<b className="loss">{losses}</b></div>
         <div className="stat">Winrate<b>{winrate}%</b></div>
       </section>
 
       <section className="form-card">
-        <div><div className="form-title">Последние игры</div><div className="muted">{streak.type ? <>Текущая серия: <strong className={streak.type === "W" ? "win" : "loss"}>{streak.type === "W" ? "🔥" : "💀"} {streak.type}{streak.count}</strong></> : "Форма игрока в матчах лиги"}</div></div>
+        <div><div className="form-title">Последние игры Season 3</div><div className="muted">{streak.type ? <>Текущая серия: <strong className={streak.type === "W" ? "win" : "loss"}>{streak.type === "W" ? "🔥" : "💀"} {streak.type}{streak.count}</strong></> : "Форма игрока в матчах третьего сезона"}</div></div>
         <div className="form-strip" aria-label="Последние результаты">{recent.length === 0 ? <span className="muted">Матчей пока нет</span> : recent.map((match) => <span key={match.match_id} className={`form-result ${match.won ? "form-win" : "form-loss"}`} title={`${match.won ? "Победа" : "Поражение"} · ${formatDate(match.start_time)}`}>{match.won ? "W" : "L"}</span>)}</div>
       </section>
 
       <section className="card" style={{ padding: 20, marginBottom: 22 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "end", marginBottom: 14 }}><div><h2 style={{ margin: 0, fontSize: 22 }}>📈 История рейтинга</h2><p className="muted" style={{ margin: "5px 0 0" }}>Каждая точка — зачётный матч сезона.</p></div><div style={{ color: "#e9b84b", fontWeight: 900 }}>Пик: {peakRating}</div></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "end", marginBottom: 14 }}><div><h2 style={{ margin: 0, fontSize: 22 }}>📈 История рейтинга</h2><p className="muted" style={{ margin: "5px 0 0" }}>Каждая точка — матч третьего сезона.</p></div><div style={{ color: "#e9b84b", fontWeight: 900 }}>Пик: {peakRating}</div></div>
         <RatingChart matches={allMatches} />
       </section>
 
       <section className="card" style={{ padding: 20, marginBottom: 26 }}>
         <h2 style={{ margin: "0 0 14px", fontSize: 22 }}>🏅 Достижения</h2>
-        {achievements.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 10 }}>{achievements.map(([icon,title,description]) => <div key={title} style={{ padding: 14, border: "1px solid #30394a", borderRadius: 13, background: "#111722" }}><div style={{ fontSize: 24 }}>{icon}</div><strong style={{ display: "block", marginTop: 7 }}>{title}</strong><span className="muted" style={{ fontSize: 12 }}>{description}</span></div>)}</div> : <div className="muted">Первые достижения откроются по ходу сезона.</div>}
+        {achievements.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 10 }}>{achievements.map(([icon,title,description]) => <div key={title} style={{ padding: 14, border: "1px solid #30394a", borderRadius: 13, background: "#111722" }}><div style={{ fontSize: 24 }}>{icon}</div><strong style={{ display: "block", marginTop: 7 }}>{title}</strong><span className="muted" style={{ fontSize: 12 }}>{description}</span></div>)}</div> : <div className="muted">Первые достижения Season 3 откроются по ходу сезона.</div>}
       </section>
 
       <section className="match-history-section">
-        <div className="match-history-heading"><div><h2>История матчей</h2><p className="muted">Нажми на матч, чтобы открыть полный состав и статистику.</p></div></div>
-        <div className="match-list">{matchRows.length === 0 ? <div className="empty-matches">Учтённых матчей пока нет.</div> : matchRows.map((match) => (
+        <div className="match-history-heading"><div><h2>История матчей Season 3</h2><p className="muted">Нажми на матч, чтобы открыть полный состав и статистику.</p></div></div>
+        <div className="match-list">{matchRows.length === 0 ? <div className="empty-matches">Учтённых матчей Season 3 пока нет.</div> : matchRows.map((match) => (
           <a href={`/match/${match.match_id}`} key={match.match_id} style={{ display: "block", color: "inherit", textDecoration: "none" }} title="Открыть подробности матча">
             <article className={`match-row ${match.won ? "match-win" : "match-loss"}`}>
               <div className="match-result-block"><strong>{match.won ? "ПОБЕДА" : "ПОРАЖЕНИЕ"}</strong><span>{formatDate(match.start_time)}</span></div>
