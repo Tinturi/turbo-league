@@ -10,7 +10,11 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseSecretKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-const PLACEMENT_MATCHES = 5;
+const SEASON_START_ISO = "2026-09-03T20:18:00.000Z";
+const SEASON_START_UNIX = Math.floor(new Date(SEASON_START_ISO).getTime() / 1000);
+const CALIBRATION_MATCHES = 5;
+const CALIBRATION_DELTA = 50;
+const REGULAR_DELTA = 25;
 const CONCURRENCY = 3;
 const OPENDOTA_TIMEOUT_MS = 20000;
 const OPENDOTA_ATTEMPTS = 3;
@@ -24,6 +28,11 @@ function didPlayerWin(match) {
   return isRadiant === Boolean(match.radiant_win);
 }
 
+function deltaForMatch(won, seasonMatchIndex) {
+  const magnitude = seasonMatchIndex < CALIBRATION_MATCHES ? CALIBRATION_DELTA : REGULAR_DELTA;
+  return won ? magnitude : -magnitude;
+}
+
 async function fetchOpenDotaMatches(accountId) {
   const url = `https://api.opendota.com/api/players/${accountId}/matches?game_mode=23&significant=0&limit=100`;
   let lastError = "Unknown OpenDota error";
@@ -31,17 +40,11 @@ async function fetchOpenDotaMatches(accountId) {
   for (let attempt = 1; attempt <= OPENDOTA_ATTEMPTS; attempt += 1) {
     try {
       const response = await fetch(url, {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "turbo-league-github-sync/1.0",
-        },
+        headers: { Accept: "application/json", "User-Agent": "turbo-league-github-sync/1.0" },
         signal: AbortSignal.timeout(OPENDOTA_TIMEOUT_MS),
       });
 
-      if (response.ok) {
-        const matches = await response.json();
-        return matches;
-      }
+      if (response.ok) return await response.json();
 
       lastError = `OpenDota HTTP ${response.status}`;
       if (response.status !== 429 && response.status < 500) break;
@@ -49,9 +52,7 @@ async function fetchOpenDotaMatches(accountId) {
       lastError = error instanceof Error ? error.message : String(error);
     }
 
-    if (attempt < OPENDOTA_ATTEMPTS) {
-      await sleep(1500 * attempt);
-    }
+    if (attempt < OPENDOTA_ATTEMPTS) await sleep(1500 * attempt);
   }
 
   throw new Error(lastError);
@@ -60,68 +61,93 @@ async function fetchOpenDotaMatches(accountId) {
 async function syncPlayer(player) {
   console.log(`\n▶ ${player.name} (${player.account_id})`);
 
-  const trackingFrom = player.tracking_from
-    ? Math.floor(new Date(player.tracking_from).getTime() / 1000)
-    : 0;
-
-  const rawMatches = await fetchOpenDotaMatches(player.account_id);
-
-  const allTurboMatches = rawMatches
-    .filter((match) => Number(match.game_mode) === 23)
-    .filter((match) => Number(match.start_time ?? 0) >= trackingFrom)
-    .sort((a, b) => Number(a.start_time ?? 0) - Number(b.start_time ?? 0));
-
-  const leagueMatches = allTurboMatches.slice(PLACEMENT_MATCHES);
-
   const { data: existingRows, error: existingError } = await supabaseAdmin
     .from("matches")
-    .select("match_id")
-    .eq("player_id", player.id);
+    .select("match_id,start_time,won,rating_delta,rating_after")
+    .eq("player_id", player.id)
+    .gte("start_time", SEASON_START_ISO)
+    .order("start_time", { ascending: true });
 
-  if (existingError) {
-    throw new Error(`Supabase existing matches: ${existingError.message}`);
+  if (existingError) throw new Error(`Supabase existing matches: ${existingError.message}`);
+
+  const existingSeasonMatches = existingRows ?? [];
+  const oldSeasonDelta = existingSeasonMatches.reduce((sum, row) => sum + Number(row.rating_delta ?? 0), 0);
+  const baselineRating = Number(player.rating) - oldSeasonDelta;
+
+  let currentRating = baselineRating;
+  let wins = 0;
+  let losses = 0;
+
+  for (let index = 0; index < existingSeasonMatches.length; index += 1) {
+    const row = existingSeasonMatches[index];
+    const won = Boolean(row.won);
+    const expectedDelta = deltaForMatch(won, index);
+    currentRating += expectedDelta;
+    if (won) wins += 1; else losses += 1;
+
+    if (Number(row.rating_delta) !== expectedDelta || Number(row.rating_after) !== currentRating) {
+      const { error: repairError } = await supabaseAdmin
+        .from("matches")
+        .update({ rating_delta: expectedDelta, rating_after: currentRating })
+        .eq("match_id", row.match_id)
+        .eq("player_id", player.id);
+      if (repairError) throw new Error(`Repair match ${row.match_id}: ${repairError.message}`);
+    }
   }
 
-  const existingMatchIds = new Set(
-    (existingRows ?? []).map((row) => Number(row.match_id)),
-  );
+  const rawMatches = await fetchOpenDotaMatches(player.account_id);
+  const allTurboMatches = rawMatches
+    .filter((match) => Number(match.game_mode) === 23)
+    .filter((match) => Number(match.start_time ?? 0) >= SEASON_START_UNIX)
+    .sort((a, b) => Number(a.start_time ?? 0) - Number(b.start_time ?? 0));
 
-  const newMatches = leagueMatches.filter(
-    (match) => !existingMatchIds.has(Number(match.match_id)),
-  );
+  const existingMatchIds = new Set(existingSeasonMatches.map((row) => Number(row.match_id)));
+  const newMatches = allTurboMatches.filter((match) => !existingMatchIds.has(Number(match.match_id)));
 
   let added = 0;
-
   for (const match of newMatches) {
-    const { data: applied, error: rpcError } = await supabaseAdmin.rpc(
-      "apply_turbo_match",
-      {
-        p_match_id: Number(match.match_id),
-        p_player_id: player.id,
-        p_start_time: match.start_time
-          ? new Date(Number(match.start_time) * 1000).toISOString()
-          : null,
-        p_hero_id: match.hero_id == null ? null : Number(match.hero_id),
-        p_won: didPlayerWin(match),
-        p_raw: match,
-      },
-    );
+    const won = didPlayerWin(match);
+    const seasonMatchIndex = existingSeasonMatches.length + added;
+    const ratingDelta = deltaForMatch(won, seasonMatchIndex);
+    currentRating += ratingDelta;
 
-    if (rpcError) {
-      throw new Error(`Match ${match.match_id}: ${rpcError.message}`);
-    }
+    const { error: insertError } = await supabaseAdmin.from("matches").insert({
+      match_id: Number(match.match_id),
+      player_id: player.id,
+      start_time: match.start_time ? new Date(Number(match.start_time) * 1000).toISOString() : null,
+      hero_id: match.hero_id == null ? null : Number(match.hero_id),
+      won,
+      rating_delta: ratingDelta,
+      rating_after: currentRating,
+      raw: match,
+    });
 
-    if (applied === true) added += 1;
+    if (insertError) throw new Error(`Match ${match.match_id}: ${insertError.message}`);
+
+    if (won) wins += 1; else losses += 1;
+    added += 1;
   }
 
+  const { error: playerUpdateError } = await supabaseAdmin
+    .from("players")
+    .update({ rating: currentRating, wins, losses, tracking_from: SEASON_START_ISO })
+    .eq("id", player.id);
+
+  if (playerUpdateError) throw new Error(`Player update: ${playerUpdateError.message}`);
+
+  const totalSeasonMatches = existingSeasonMatches.length + added;
   const result = {
     player: player.name,
+    season: 3,
     turboAfterStart: allTurboMatches.length,
-    placementSkipped: Math.min(PLACEMENT_MATCHES, allTurboMatches.length),
-    ratedMatchesFound: leagueMatches.length,
-    alreadyImported: leagueMatches.length - newMatches.length,
+    seasonMatches: totalSeasonMatches,
+    calibrationPlayed: Math.min(totalSeasonMatches, CALIBRATION_MATCHES),
+    regularPlayed: Math.max(0, totalSeasonMatches - CALIBRATION_MATCHES),
     newFound: newMatches.length,
     added,
+    rating: currentRating,
+    wins,
+    losses,
   };
 
   console.log(`✓ ${JSON.stringify(result)}`);
@@ -129,11 +155,11 @@ async function syncPlayer(player) {
 }
 
 async function main() {
-  console.log(`Turbo League sync started: ${new Date().toISOString()}`);
+  console.log(`Turbo League Season 3 sync started: ${new Date().toISOString()}`);
 
   const { data, error } = await supabaseAdmin
     .from("players")
-    .select("id,name,account_id,tracking_from")
+    .select("id,name,account_id,rating")
     .eq("active", true)
     .order("id");
 
@@ -151,12 +177,9 @@ async function main() {
 
     settled.forEach((entry, index) => {
       const player = batch[index];
-      if (entry.status === "fulfilled") {
-        results.push(entry.value);
-      } else {
-        const message = entry.reason instanceof Error
-          ? entry.reason.message
-          : String(entry.reason);
+      if (entry.status === "fulfilled") results.push(entry.value);
+      else {
+        const message = entry.reason instanceof Error ? entry.reason.message : String(entry.reason);
         failures.push({ player: player.name, error: message });
         console.error(`✗ ${player.name}: ${message}`);
       }
@@ -164,7 +187,7 @@ async function main() {
   }
 
   const addedTotal = results.reduce((sum, item) => sum + item.added, 0);
-  console.log(`\nTurbo League sync finished: added=${addedTotal}, success=${results.length}, failed=${failures.length}`);
+  console.log(`\nTurbo League Season 3 sync finished: added=${addedTotal}, success=${results.length}, failed=${failures.length}`);
 
   if (failures.length > 0) {
     console.error(`Failures: ${JSON.stringify(failures)}`);
