@@ -17,7 +17,9 @@ type Player = {
 };
 
 const PLACEMENT_MATCHES = 5;
-const CONCURRENCY = 3;
+const CONCURRENCY = 5;
+const OPENDOTA_TIMEOUT_MS = 8000;
+const OPENDOTA_ATTEMPTS = 2;
 
 function didPlayerWin(match: OpenDotaMatch) {
   const isRadiant = match.player_slot < 128;
@@ -28,11 +30,15 @@ async function fetchOpenDotaMatches(accountId: number) {
   const url = `https://api.opendota.com/api/players/${accountId}/matches?game_mode=23&significant=0&limit=100`;
   let lastStatus = 0;
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < OPENDOTA_ATTEMPTS; attempt += 1) {
     try {
       const response = await fetch(url, {
         cache: "no-store",
-        signal: AbortSignal.timeout(12000),
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Turbo-League-S2/1.0",
+        },
+        signal: AbortSignal.timeout(OPENDOTA_TIMEOUT_MS),
       });
       lastStatus = response.status;
 
@@ -45,7 +51,9 @@ async function fetchOpenDotaMatches(accountId: number) {
       lastStatus = 0;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+    if (attempt + 1 < OPENDOTA_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, 750));
+    }
   }
 
   return {
@@ -81,6 +89,7 @@ export default async (req: Request) => {
 
     const result = await fetchOpenDotaMatches(player.account_id);
     if (!result.matches) {
+      console.warn(`${player.name}: ${result.error}`);
       return { player: player.name, ok: false, error: result.error };
     }
 
@@ -107,7 +116,6 @@ export default async (req: Request) => {
     const existingMatchIds = new Set(
       (existingRows ?? []).map((row) => Number(row.match_id)),
     );
-
     const newMatches = leagueMatches.filter(
       (match) => !existingMatchIds.has(match.match_id),
     );
@@ -135,7 +143,7 @@ export default async (req: Request) => {
       else if (applied === true) added += 1;
     }
 
-    return {
+    const playerSummary = {
       player: player.name,
       ok: errors.length === 0,
       turboAfterStart: allTurboMatches.length,
@@ -146,6 +154,9 @@ export default async (req: Request) => {
       added,
       errors,
     };
+
+    console.log(`Player sync: ${JSON.stringify(playerSummary)}`);
+    return playerSummary;
   }
 
   try {
@@ -169,7 +180,15 @@ export default async (req: Request) => {
       summary.push(...batchResults);
     }
 
-    console.log(`Turbo League background sync completed: ${JSON.stringify(summary)}`);
+    const addedTotal = summary.reduce(
+      (total, item) => total + ("added" in item ? Number(item.added ?? 0) : 0),
+      0,
+    );
+    const failedTotal = summary.filter((item) => item.ok === false).length;
+
+    console.log(
+      `Turbo League background sync completed: players=${players.length}, added=${addedTotal}, failed=${failedTotal}; ${JSON.stringify(summary)}`,
+    );
   } catch (error) {
     console.error("Turbo League background sync failed", error);
   }
