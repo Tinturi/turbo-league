@@ -29,11 +29,11 @@ async function fetchOpenDotaMatches(accountId: number) {
   const url = `https://api.opendota.com/api/players/${accountId}/matches?game_mode=23&significant=0&limit=100`;
   let lastStatus = 0;
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const response = await fetch(url, {
         cache: "no-store",
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(8000),
       });
       lastStatus = response.status;
 
@@ -46,7 +46,7 @@ async function fetchOpenDotaMatches(accountId: number) {
       lastStatus = 0;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+    await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
   }
 
   return {
@@ -70,15 +70,32 @@ async function syncPlayer(player: Player) {
     .filter((match) => (match.start_time ?? 0) >= trackingFrom)
     .sort((a, b) => (a.start_time ?? 0) - (b.start_time ?? 0));
 
-  // The first five Turbo matches after tracking_from are placement matches.
-  // They are intentionally excluded from league W/L and rating calculations.
   const leagueMatches = allTurboMatches.slice(PLACEMENT_MATCHES);
 
+  const { data: existingRows, error: existingError } = await supabaseAdmin
+    .from("matches")
+    .select("match_id")
+    .eq("player_id", player.id);
+
+  if (existingError) {
+    return {
+      player: player.name,
+      ok: false,
+      error: `Existing matches lookup failed: ${existingError.message}`,
+    };
+  }
+
+  const existingMatchIds = new Set(
+    (existingRows ?? []).map((row) => Number(row.match_id)),
+  );
+  const newMatches = leagueMatches.filter(
+    (match) => !existingMatchIds.has(match.match_id),
+  );
+
   let added = 0;
-  let skipped = 0;
   const errors: string[] = [];
 
-  for (const match of leagueMatches) {
+  for (const match of newMatches) {
     const won = didPlayerWin(match);
     const { data: applied, error: rpcError } = await supabaseAdmin.rpc(
       "apply_turbo_match",
@@ -96,7 +113,6 @@ async function syncPlayer(player: Player) {
 
     if (rpcError) errors.push(`${match.match_id}: ${rpcError.message}`);
     else if (applied === true) added += 1;
-    else skipped += 1;
   }
 
   return {
@@ -105,8 +121,9 @@ async function syncPlayer(player: Player) {
     turboAfterStart: allTurboMatches.length,
     placementSkipped: Math.min(PLACEMENT_MATCHES, allTurboMatches.length),
     found: leagueMatches.length,
+    alreadyImported: leagueMatches.length - newMatches.length,
+    newFound: newMatches.length,
     added,
-    skipped,
     errors,
   };
 }
@@ -145,8 +162,6 @@ export async function GET(req: NextRequest) {
   const players = (data ?? []) as Player[];
   const summary: Awaited<ReturnType<typeof syncPlayer>>[] = [];
 
-  // Process a few players at once. This keeps the scheduled function well below
-  // its execution limit without hammering OpenDota with all players at once.
   for (let i = 0; i < players.length; i += CONCURRENCY) {
     const batch = players.slice(i, i + CONCURRENCY);
     const batchResults = await Promise.all(batch.map(syncPlayer));
