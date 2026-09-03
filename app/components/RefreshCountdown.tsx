@@ -2,16 +2,19 @@
 
 import { useEffect, useState } from "react";
 
-function getSecondsUntilNextHalfHour() {
+function getSecondsUntilNextTenMinutes() {
   const now = new Date();
   const next = new Date(now);
   next.setSeconds(0, 0);
 
-  if (now.getMinutes() < 30) {
-    next.setMinutes(30);
-  } else {
+  const minutes = now.getMinutes();
+  const nextMinute = Math.ceil((minutes + 0.0001) / 10) * 10;
+
+  if (nextMinute >= 60) {
     next.setHours(now.getHours() + 1);
     next.setMinutes(0);
+  } else {
+    next.setMinutes(nextMinute);
   }
 
   return Math.max(0, Math.ceil((next.getTime() - now.getTime()) / 1000));
@@ -24,11 +27,11 @@ function formatTime(totalSeconds: number) {
 }
 
 export default function RefreshCountdown() {
-  const [secondsLeft, setSecondsLeft] = useState(getSecondsUntilNextHalfHour());
+  const [secondsLeft, setSecondsLeft] = useState(getSecondsUntilNextTenMinutes());
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      setSecondsLeft(getSecondsUntilNextHalfHour());
+      setSecondsLeft(getSecondsUntilNextTenMinutes());
     }, 1000);
 
     return () => window.clearInterval(interval);
