@@ -16,7 +16,7 @@ export default async () => {
 
   const body = await response.text();
 
-  console.log(`Turbo League 30-minute sync: ${response.status} ${body}`);
+  console.log(`Turbo League 10-minute sync: ${response.status} ${body}`);
 
   if (!response.ok) {
     return new Response(body, { status: response.status });
@@ -29,5 +29,5 @@ export default async () => {
 };
 
 export const config = {
-  schedule: "*/30 * * * *",
+  schedule: "*/10 * * * *",
 };
