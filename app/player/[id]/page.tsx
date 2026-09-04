@@ -55,6 +55,18 @@ function formatDate(value: string | null) {
   return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Novosibirsk" }).format(new Date(value));
 }
 
+function getWeekStart(date = new Date()) {
+  const d = new Date(date);
+  const saturday = 6;
+  let daysBack = (d.getUTCDay() - saturday + 7) % 7;
+  let boundary = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - daysBack, 5, 0, 0, 0));
+  if (d.getTime() < boundary.getTime()) {
+    daysBack += 7;
+    boundary = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - daysBack, 5, 0, 0, 0));
+  }
+  return boundary;
+}
+
 function currentStreak(matches: LeagueMatch[]) {
   if (!matches.length) return { type: null as "W" | "L" | null, count: 0 };
   const newest = [...matches].sort((a, b) => new Date(b.start_time ?? 0).getTime() - new Date(a.start_time ?? 0).getTime());
@@ -131,6 +143,16 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
     return { ...match, heroName: hero?.name ?? `Hero ${match.hero_id ?? "?"}`, heroImage: hero?.image ?? null, opponents: await getOpponents(match.match_id, player.account_id, heroes) };
   }));
 
+  const weekStart = getWeekStart();
+  const blockedHeroIds = [...new Set(allMatches
+    .filter((match) => match.start_time && new Date(match.start_time).getTime() >= weekStart.getTime())
+    .map((match) => match.hero_id)
+    .filter((heroId): heroId is number => heroId != null && heroId > 0))];
+  const blockedHeroes = blockedHeroIds.map((heroId) => {
+    const hero = heroes.get(heroId);
+    return { id: heroId, name: hero?.name ?? `Hero ${heroId}`, image: hero?.image ?? null };
+  });
+
   const wins = allMatches.filter((match) => match.won).length;
   const losses = allMatches.length - wins;
   const total = allMatches.length;
@@ -167,6 +189,26 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
       </section>
 
       <DoubleDownCard playerId={player.id} />
+
+      <section className="card" style={{ padding: 18, marginBottom: 22, border: "1px solid rgba(255,118,118,.22)", background: "linear-gradient(135deg, rgba(47,18,24,.72), rgba(15,19,28,.96) 48%, rgba(10,14,21,.96))" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "end", flexWrap: "wrap", marginBottom: 13 }}>
+          <div><div style={{ color: "#ff8585", fontSize: 11, fontWeight: 900, letterSpacing: ".12em" }}>🚫 ЗАБЛОКИРОВАНЫ ДО СУББОТЫ</div><h2 style={{ margin: "5px 0 0", fontSize: 20 }}>Герои этой недели</h2></div>
+          <span className="muted" style={{ fontSize: 12 }}>Повторная игра на них не попадёт в зачёт</span>
+        </div>
+        {blockedHeroes.length ? (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {blockedHeroes.map((hero) => (
+              <div key={hero.id} title={`${hero.name} — уже использован на этой неделе`} style={{ width: 86 }}>
+                <div style={{ position: "relative", width: 86, height: 49, overflow: "hidden", borderRadius: 9, border: "1px solid rgba(255,133,133,.45)", background: "#111722", boxShadow: "0 6px 16px rgba(0,0,0,.25)" }}>
+                  {hero.image ? <img src={hero.image} alt={hero.name} width={86} height={49} style={{ width: "100%", height: "100%", objectFit: "cover", filter: "saturate(.65) brightness(.78)" }} /> : <div style={{ height: "100%", display: "grid", placeItems: "center", fontSize: 11 }}>Hero {hero.id}</div>}
+                  <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "rgba(82,4,15,.18)", color: "#ff9b9b", fontSize: 24, fontWeight: 900, textShadow: "0 2px 7px #000" }}>×</div>
+                </div>
+                <div style={{ marginTop: 5, fontSize: 11, lineHeight: 1.15, textAlign: "center", color: "#c6ccd8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{hero.name}</div>
+              </div>
+            ))}
+          </div>
+        ) : <div className="muted" style={{ fontSize: 13 }}>На этой неделе у игрока пока нет заблокированных героев.</div>}
+      </section>
 
       <section className="form-card">
         <div><div className="form-title">Последние игры Season 3</div><div className="muted">{streak.type ? <>Текущая серия: <strong className={streak.type === "W" ? "win" : "loss"}>{streak.type === "W" ? "🔥" : "💀"} {streak.type}{streak.count}</strong></> : "Форма игрока в матчах третьего сезона"}</div></div>
