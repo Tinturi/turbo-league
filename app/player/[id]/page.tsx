@@ -192,7 +192,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
 
       <section className="card" style={{ padding: 18, marginBottom: 22, border: "1px solid rgba(255,118,118,.22)", background: "linear-gradient(135deg, rgba(47,18,24,.72), rgba(15,19,28,.96) 48%, rgba(10,14,21,.96))" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "end", flexWrap: "wrap", marginBottom: 13 }}>
-          <div><div style={{ color: "#ff8585", fontSize: 11, fontWeight: 900, letterSpacing: ".12em" }}>🚫 ЗАБЛОКИРОВАНЫ ДО СУББОТЫ</div><h2 style={{ margin: "5px 0 0", fontSize: 20 }}>Герои этой недели</h2></div>
+          <div><div style={{ color: "#ff8585", fontSize: 11, fontWeight: 900, letterSpacing: ".12em" }}>🚫 ЗАБЛОКИРОВАНЫ НА ЭТОЙ ИГРОВОЙ НЕДЕЛЕ</div><h2 style={{ margin: "5px 0 0", fontSize: 20 }}>Герои этой недели</h2></div>
           <span className="muted" style={{ fontSize: 12 }}>Повторная игра на них не попадёт в зачёт</span>
         </div>
         {blockedHeroes.length ? (
