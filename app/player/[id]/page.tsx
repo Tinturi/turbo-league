@@ -7,6 +7,8 @@ import DoubleDownCard from "@/app/components/DoubleDownCard";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const MATCHES_PER_PAGE = 10;
+
 type Player = { id: number; name: string; account_id: number; rating: number; wins: number; losses: number; };
 type LeagueMatch = { match_id: number; start_time: string | null; hero_id: number | null; won: boolean; rating_delta: number; rating_after: number; };
 type OpenDotaProfile = { profile?: { avatarfull?: string | null; avatarmedium?: string | null; avatar?: string | null; }; };
@@ -120,9 +122,10 @@ function RatingChart({ matches }: { matches: LeagueMatch[] }) {
   );
 }
 
-export default async function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PlayerPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ page?: string }> }) {
   noStore();
   const { id } = await params;
+  const { page: pageParam } = await searchParams;
   const playerId = Number(id);
   if (!Number.isFinite(playerId)) notFound();
 
@@ -135,10 +138,15 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
   if (!playerData) notFound();
   const player = playerData as Player;
   const allMatches = (matchData ?? []) as LeagueMatch[];
-  const matches = allMatches.slice(0, 12);
+  const totalPages = Math.max(1, Math.ceil(allMatches.length / MATCHES_PER_PAGE));
+  const requestedPage = Number.parseInt(pageParam ?? "1", 10);
+  const currentPage = Number.isFinite(requestedPage) ? Math.min(Math.max(requestedPage, 1), totalPages) : 1;
+  const pageStart = (currentPage - 1) * MATCHES_PER_PAGE;
+  const historyMatches = allMatches.slice(pageStart, pageStart + MATCHES_PER_PAGE);
+  const recentMatches = allMatches.slice(0, 12);
   const avatar = await getAvatar(player.account_id);
 
-  const matchRows = await Promise.all(matches.map(async (match) => {
+  const matchRows = await Promise.all(historyMatches.map(async (match) => {
     const hero = heroes.get(match.hero_id ?? 0);
     return { ...match, heroName: hero?.name ?? `Hero ${match.hero_id ?? "?"}`, heroImage: hero?.image ?? null, opponents: await getOpponents(match.match_id, player.account_id, heroes) };
   }));
@@ -158,7 +166,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
   const total = allMatches.length;
   const winrateValue = total ? (wins / total) * 100 : 0;
   const winrate = winrateValue.toFixed(1);
-  const recent = [...matches].reverse();
+  const recent = [...recentMatches].reverse();
   const streak = currentStreak(allMatches);
   const bestStreak = bestWinStreak(allMatches);
   const orderedForPeak = [...allMatches].sort((a, b) => new Date(a.start_time ?? 0).getTime() - new Date(b.start_time ?? 0).getTime());
@@ -225,8 +233,8 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
         {achievements.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 10 }}>{achievements.map(([icon,title,description]) => <div key={title} style={{ padding: 14, border: "1px solid #30394a", borderRadius: 13, background: "#111722" }}><div style={{ fontSize: 24 }}>{icon}</div><strong style={{ display: "block", marginTop: 7 }}>{title}</strong><span className="muted" style={{ fontSize: 12 }}>{description}</span></div>)}</div> : <div className="muted">Первые достижения Season 3 откроются по ходу сезона.</div>}
       </section>
 
-      <section className="match-history-section">
-        <div className="match-history-heading"><div><h2>История матчей Season 3</h2><p className="muted">Нажми на матч, чтобы открыть полный состав и статистику.</p></div></div>
+      <section className="match-history-section" id="match-history">
+        <div className="match-history-heading"><div><h2>История матчей Season 3</h2><p className="muted">Все зачётные матчи сезона · по 10 на странице · страница {currentPage} из {totalPages}</p></div></div>
         <div className="match-list">{matchRows.length === 0 ? <div className="empty-matches">Учтённых матчей Season 3 пока нет.</div> : matchRows.map((match) => (
           <a href={`/match/${match.match_id}`} key={match.match_id} style={{ display: "block", color: "inherit", textDecoration: "none" }} title="Открыть подробности матча">
             <article className={`match-row ${match.won ? "match-win" : "match-loss"}`}>
@@ -237,6 +245,16 @@ export default async function PlayerPage({ params }: { params: Promise<{ id: str
             </article>
           </a>
         ))}</div>
+
+        {totalPages > 1 ? (
+          <nav aria-label="Страницы истории матчей" style={{ display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 8, marginTop: 18 }}>
+            {currentPage > 1 ? <a href={`/player/${player.id}?page=${currentPage - 1}#match-history`} style={{ padding: "9px 13px", borderRadius: 10, border: "1px solid #30394a", color: "#d8deea", textDecoration: "none", background: "#111722", fontWeight: 800 }}>←</a> : null}
+            {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+              <a key={pageNumber} href={`/player/${player.id}?page=${pageNumber}#match-history`} aria-current={pageNumber === currentPage ? "page" : undefined} style={{ minWidth: 38, padding: "9px 11px", textAlign: "center", borderRadius: 10, border: pageNumber === currentPage ? "1px solid #e9b84b" : "1px solid #30394a", color: pageNumber === currentPage ? "#17120a" : "#d8deea", textDecoration: "none", background: pageNumber === currentPage ? "#e9b84b" : "#111722", fontWeight: 900 }}>{pageNumber}</a>
+            ))}
+            {currentPage < totalPages ? <a href={`/player/${player.id}?page=${currentPage + 1}#match-history`} style={{ padding: "9px 13px", borderRadius: 10, border: "1px solid #30394a", color: "#d8deea", textDecoration: "none", background: "#111722", fontWeight: 800 }}>→</a> : null}
+          </nav>
+        ) : null}
       </section>
     </main>
   );
