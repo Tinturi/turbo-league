@@ -15,5 +15,10 @@ export function validPassword(value: unknown): value is string {
 }
 
 export function sameOrigin(request: Request) {
-  return request.headers.get("origin") === new URL(request.url).origin;
+  // Netlify can rewrite request.url to an internal deployment hostname.
+  // Compare against the configured public origin, never untrusted forwarded headers.
+  const expected = process.env.NODE_ENV === "production"
+    ? (process.env.SITE_ORIGIN || "https://turbo-league-s2.netlify.app")
+    : new URL(request.url).origin;
+  return request.headers.get("origin") === expected;
 }

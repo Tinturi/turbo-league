@@ -22,6 +22,12 @@ assert.equal(validPassword('long-secret-pass'), true);
 assert.equal(sameOrigin(new Request('https://turbo-league-s2.netlify.app/api/auth', { headers: { origin: 'https://evil.example' } })), false);
 assert.equal(sameOrigin(new Request('https://turbo-league-s2.netlify.app/api/auth')), false);
 assert.equal(sameOrigin(new Request('https://turbo-league-s2.netlify.app/api/auth', { headers: { origin: 'https://turbo-league-s2.netlify.app' } })), true);
+const previousNodeEnv = process.env.NODE_ENV;
+process.env.NODE_ENV = 'production';
+assert.equal(sameOrigin(new Request('http://internal-deployment/api/auth', { headers: { origin: 'https://turbo-league-s2.netlify.app' } })), true);
+assert.equal(sameOrigin(new Request('http://internal-deployment/api/auth', { headers: { origin: 'https://evil.example', 'x-forwarded-host': 'evil.example' } })), false);
+if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+else process.env.NODE_ENV = previousNodeEnv;
 assert.equal(imageType(Buffer.from('<svg onload="alert(1)"></svg>')), null);
 assert.equal(imageType(Buffer.alloc(512 * 1024 + 1)), null);
 assert.equal(imageType(readFileSync(new URL('../public/season3-winner.png', import.meta.url))), null); // winner poster exceeds avatar size
