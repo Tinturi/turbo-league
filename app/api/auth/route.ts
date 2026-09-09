@@ -8,13 +8,19 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const account = await currentAccount(req);
+    let profile = null;
+    if (account) {
+      const result = await supabaseAdmin.from("players").select("id,name,account_id").eq("id", account.player_id).single();
+      if (result.error) throw new Error("Profile unavailable");
+      profile = result.data;
+    }
     const [{ data: players, error }, { data: claimed, error: claimError }] = await Promise.all([
       supabaseAdmin.from("players").select("id,name").eq("active", true).order("name"),
       supabaseAdmin.from("player_accounts").select("player_id"),
     ]);
     if (error || claimError) throw new Error("Unavailable");
     const taken = new Set((claimed ?? []).map(row => Number(row.player_id)));
-    return NextResponse.json({ ok: true, release: "accounts-20260909-v4", account, players: (players ?? []).filter(row => !taken.has(Number(row.id))) }, { headers: privateHeaders });
+    return NextResponse.json({ ok: true, release: "accounts-20260909-v4", account, profile, players: (players ?? []).filter(row => !taken.has(Number(row.id))) }, { headers: privateHeaders });
   } catch {
     return NextResponse.json({ ok: false, error: "Сервис аккаунтов временно недоступен" }, { status: 503, headers: privateHeaders });
   }
