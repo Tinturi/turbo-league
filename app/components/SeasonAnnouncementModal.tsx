@@ -19,7 +19,6 @@ export default function SeasonAnnouncementModal() {
           <h2 className={styles.title}>Третий сезон завершён!</h2>
           <p className={styles.copy}>Все призы отправлены. Поздравляем победителя и спасибо каждому участнику за игры!</p>
           <p className={styles.subcopy}>Готовимся к Season 4. Зарегистрируйтесь и привяжите свой профиль игрока.</p>
-          <a className={styles.accountButton} href="/account">Вход / Регистрация</a>
         </div>
       </section>
     </div>
