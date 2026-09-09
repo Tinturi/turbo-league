@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     ]);
     if (error || claimError) throw new Error("Unavailable");
     const taken = new Set((claimed ?? []).map(row => Number(row.player_id)));
-    return NextResponse.json({ ok: true, release: "accounts-20260909-v3", account, players: (players ?? []).filter(row => !taken.has(Number(row.id))) }, { headers: privateHeaders });
+    return NextResponse.json({ ok: true, release: "accounts-20260909-v4", account, players: (players ?? []).filter(row => !taken.has(Number(row.id))) }, { headers: privateHeaders });
   } catch {
     return NextResponse.json({ ok: false, error: "Сервис аккаунтов временно недоступен" }, { status: 503, headers: privateHeaders });
   }

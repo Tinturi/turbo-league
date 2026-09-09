@@ -38,10 +38,26 @@ async function snapshot() {
 try {
   let ready = false;
   for (let attempt = 0; attempt < 60; attempt++) {
-    try { const result = await request('/api/auth'); if (result.status === 200 && result.data.release === 'accounts-20260909-v3') { ready = true; break; } } catch {}
+    try { const result = await request('/api/auth'); if (result.status === 200 && result.data.release === 'accounts-20260909-v4') { ready = true; break; } } catch {}
     await sleep(10000);
   }
   assert.ok(ready, 'New deployment did not become ready');
+  // Exact orphaned QA identities from the two pre-fix verification runs.
+  // Refuse cleanup unless both metadata and the absence of a real profile match.
+  for (const qa of [
+    { id: '81f822ac-eb9f-464a-bb1f-02b1459f8ee2', username: 'qa_516cf1bd0411', playerId: 14 },
+    { id: '6b080a3e-0f5b-4376-9c75-673ac603eb29', username: 'qa_9ef987eb0def', playerId: 18 },
+  ]) {
+    const { data, error } = await db.auth.admin.getUserById(qa.id);
+    if (error?.status === 404 || error?.code === 'user_not_found') continue;
+    if (error || !data.user) throw new Error('Could not verify abandoned QA identity');
+    assert.equal(data.user.app_metadata.league_username, qa.username);
+    assert.equal(Number(data.user.app_metadata.league_player_id), qa.playerId);
+    const profile = await db.from('players').select('id').eq('id', qa.playerId).maybeSingle();
+    assert.ok(!profile.error && !profile.data, 'Refusing to remove an identity with a player profile');
+    const removed = await db.auth.admin.deleteUser(qa.id);
+    if (removed.error) throw new Error('Abandoned QA identity cleanup failed');
+  }
   before = await snapshot();
   for (let i = 0; i < 2; i++) {
     const { data, error } = await db.from('players').insert({ name: `QA verification ${prefix} ${i + 1}`, account_id: 8000000000 + randomInt(100000000, 2000000000), rating: 0, wins: 0, losses: 0, active: true }).select('id,account_id').single();

@@ -5,11 +5,13 @@ declare p bigint; p2 bigint; u uuid := gen_random_uuid(); v uuid := gen_random_u
 begin
   insert into public.players(name, account_id) values ('__transaction_test__', -9090901) returning id into p;
   insert into public.players(name, account_id) values ('__transaction_test_2__', -9090902) returning id into p2;
-  insert into auth.users(id, raw_app_meta_data) values (u, jsonb_build_object('league_username','__transaction_test__','league_player_id',p));
+  insert into auth.users(id, raw_app_meta_data) values (u, '{"provider":"email"}'::jsonb);
+  update auth.users set raw_app_meta_data=jsonb_build_object('league_username','__transaction_test__','league_player_id',p) where id=u;
   if not exists(select 1 from public.player_accounts where user_id=u and player_id=p) then raise exception 'Claim missing'; end if;
   blocked := false;
   begin
-    insert into auth.users(id, raw_app_meta_data) values (v, jsonb_build_object('league_username','__transaction_test_2__','league_player_id',p));
+    insert into auth.users(id, raw_app_meta_data) values (v, '{"provider":"email"}'::jsonb);
+    update auth.users set raw_app_meta_data=jsonb_build_object('league_username','__transaction_test_2__','league_player_id',p) where id=v;
   exception when unique_violation then blocked := true;
   end;
   if not blocked or exists(select 1 from auth.users where id=v) then raise exception 'Duplicate claim was not atomic'; end if;

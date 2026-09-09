@@ -31,7 +31,7 @@ function PlayerAvatar({ player }: { player: PlayerRow }) {
 
     async function loadAvatar() {
       try {
-        const response = await fetch(`/api/avatar/${player.account_id}`);
+        const response = await fetch(`/api/avatar/${player.account_id}`, { cache: "no-store" });
         if (!response.ok) return;
         const data = (await response.json()) as { avatar?: string | null };
         if (!cancelled) setAvatar(data.avatar ?? null);

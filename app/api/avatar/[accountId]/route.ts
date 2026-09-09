@@ -41,7 +41,7 @@ export async function GET(
     if (!response.ok) {
       return NextResponse.json(
         { avatar: null },
-        { headers: { "Cache-Control": "public, max-age=600, s-maxage=600" } },
+        { headers: { "Cache-Control": "no-store" } },
       );
     }
 
@@ -54,12 +54,12 @@ export async function GET(
 
     return NextResponse.json(
       { avatar },
-      { headers: { "Cache-Control": "public, max-age=3600, s-maxage=21600" } },
+      { headers: { "Cache-Control": "no-store" } },
     );
   } catch {
     return NextResponse.json(
       { avatar: null },
-      { headers: { "Cache-Control": "public, max-age=300, s-maxage=300" } },
+      { headers: { "Cache-Control": "no-store" } },
     );
   }
 }
