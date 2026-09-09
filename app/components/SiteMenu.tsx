@@ -59,6 +59,7 @@ export default function SiteMenu() {
           }}
         >
           {[
+            ["👤 Login / Регистрация", "/account"],
             ["🏆 Лидерборд", "/"],
             ["📊 Статистика сезона", "/stats"],
             ["📜 Регламент", "/rules"],

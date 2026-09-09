@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { SEASON_START_ISO } from "@/lib/season";
 import DoubleDownCard from "@/app/components/DoubleDownCard";
+import AvatarEditor from "@/app/components/AvatarEditor";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -144,7 +145,8 @@ export default async function PlayerPage({ params, searchParams }: { params: Pro
   const pageStart = (currentPage - 1) * MATCHES_PER_PAGE;
   const historyMatches = allMatches.slice(pageStart, pageStart + MATCHES_PER_PAGE);
   const recentMatches = allMatches.slice(0, 12);
-  const avatar = await getAvatar(player.account_id);
+  const { data: customAvatar } = await supabase.from("player_avatars").select("image").eq("player_id", player.id).maybeSingle();
+  const avatar = customAvatar?.image ?? await getAvatar(player.account_id);
 
   const matchRows = await Promise.all(historyMatches.map(async (match) => {
     const hero = heroes.get(match.hero_id ?? 0);
@@ -196,6 +198,7 @@ export default async function PlayerPage({ params, searchParams }: { params: Pro
         <div className="stat">Winrate<b>{winrate}%</b></div>
       </section>
 
+      <AvatarEditor playerId={player.id} accountId={player.account_id} />
       <DoubleDownCard playerId={player.id} />
 
       <section className="card" style={{ padding: 18, marginBottom: 22, border: "1px solid rgba(255,118,118,.22)", background: "linear-gradient(135deg, rgba(47,18,24,.72), rgba(15,19,28,.96) 48%, rgba(10,14,21,.96))" }}>

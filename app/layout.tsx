@@ -1,5 +1,6 @@
 import "./globals.css";
 import "./season3.css";
+import "./accounts.css";
 import SiteMenu from "@/app/components/SiteMenu";
 
 export const metadata = {

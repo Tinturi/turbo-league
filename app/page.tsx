@@ -2,6 +2,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { supabase } from "@/lib/supabase";
 import RefreshCountdown from "@/app/components/RefreshCountdown";
 import LeaderboardTable from "@/app/components/LeaderboardTable";
+import SeasonAnnouncement from "@/app/components/SeasonAnnouncement";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -46,6 +47,7 @@ export default async function Home() {
 
   return (
     <>
+      <SeasonAnnouncement />
       <section className="hero">
         <div className="hero-content">
           <h1>Turbo League</h1>

@@ -21,6 +21,10 @@ export default function DoubleDownCard({ playerId }: { playerId: number }) {
   const [activating, setActivating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
+  useEffect(() => {
+    fetch("/api/auth", { cache: "no-store" }).then(r => r.json()).then(data => setIsOwner(Number(data.account?.player_id) === playerId)).catch(() => setIsOwner(false));
+  }, [playerId]);
 
   async function load() {
     setLoading(true); setError(null);
@@ -35,7 +39,7 @@ export default function DoubleDownCard({ playerId }: { playerId: number }) {
   useEffect(() => { void load(); }, [playerId]);
 
   async function activate() {
-    if (!status || activating || status.pending || status.remaining <= 0) return;
+    if (!isOwner || !status || activating || status.pending || status.remaining <= 0) return;
     setActivating(true); setError(null); setMessage(null);
     try {
       const response = await fetch("/api/double-down", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playerId }) });
@@ -72,9 +76,10 @@ export default function DoubleDownCard({ playerId }: { playerId: number }) {
       </div>
 
       <div style={{ marginTop: 18, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <button type="button" onClick={activate} disabled={loading || activating || Boolean(status?.pending) || (status?.remaining ?? 0) <= 0} style={{ border: "1px solid rgba(255,190,73,.62)", borderRadius: 13, padding: "13px 18px", background: status?.pending ? "rgba(255,156,45,.15)" : "#e9b84b", color: status?.pending ? "#f4bf66" : "#17120a", fontWeight: 900, fontSize: 14, cursor: loading || activating || status?.pending || (status?.remaining ?? 0) <= 0 ? "default" : "pointer", opacity: loading || activating || (status?.remaining ?? 0) <= 0 ? .66 : 1 }}>
+        <button type="button" onClick={activate} disabled={!isOwner || loading || activating || Boolean(status?.pending) || (status?.remaining ?? 0) <= 0} style={{ border: "1px solid rgba(255,190,73,.62)", borderRadius: 13, padding: "13px 18px", background: status?.pending ? "rgba(255,156,45,.15)" : "#e9b84b", color: status?.pending ? "#f4bf66" : "#17120a", fontWeight: 900, fontSize: 14, cursor: loading || activating || status?.pending || (status?.remaining ?? 0) <= 0 ? "default" : "pointer", opacity: !isOwner || loading || activating || (status?.remaining ?? 0) <= 0 ? .66 : 1 }}>
           {activating ? "АКТИВИРУЮ…" : status?.pending ? "🔥 DOUBLE DOWN АКТИВЕН" : "🔥 АКТИВИРОВАТЬ DOUBLE DOWN"}
         </button>
+        {!isOwner && <a href="/account">Войдите как владелец профиля для активации</a>}
         <span className="muted" style={{ fontSize: 12 }}>Новая неделя: {formatReset(status?.nextReset)} по Новосибирску</span>
       </div>
       {status?.pending ? <div style={{ marginTop: 13, padding: "11px 13px", borderRadius: 11, color: "#f2c36e", background: "rgba(233,184,75,.08)", border: "1px solid rgba(233,184,75,.22)" }}>DD зарезервирован. После следующего обновления таблицы он будет привязан к подходящему матчу.</div> : null}

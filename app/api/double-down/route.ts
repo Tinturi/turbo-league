@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { requireOwner } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,10 @@ export async function POST(req: NextRequest) {
 
   const playerId = Number(body.playerId);
   if (!Number.isInteger(playerId) || playerId <= 0) return NextResponse.json({ ok: false, error: "Некорректный игрок" }, { status: 400 });
+  try {
+    const denied = await requireOwner(req, playerId);
+    if (denied) return denied;
+  } catch { return NextResponse.json({ ok: false, error: "Не удалось проверить права" }, { status: 503 }); }
   const { data: player } = await supabaseAdmin.from("players").select("id").eq("id", playerId).eq("active", true).maybeSingle();
   if (!player) return NextResponse.json({ ok: false, error: "Игрок не найден" }, { status: 404 });
 
@@ -102,8 +107,8 @@ export async function POST(req: NextRequest) {
     if (status.pending) return NextResponse.json({ ok: false, error: "Double Down уже активирован и ждёт текущий матч", status }, { status: 409 });
     if (status.remaining <= 0) return NextResponse.json({ ok: false, error: "Double Down на этой неделе закончились", status }, { status: 409 });
 
-    const now = new Date().toISOString();
-    const { error } = await supabaseAdmin.from("double_down_activations").insert({ player_id: playerId, activated_at: now, week_start: status.weekStart, status: "pending" });
+    const { error } = await supabaseAdmin.rpc("activate_owned_double_down", { target_player: playerId });
+    if (error?.code === "P0001") return NextResponse.json({ ok: false, error: "Double Down уже активирован или лимит исчерпан", status: await getStatus(playerId) }, { status: 409 });
     if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true, status: await getStatus(playerId), message: "Double Down активирован. Система привяжет его к матчу, начавшемуся не более 10 минут назад." });
   } catch (error) {

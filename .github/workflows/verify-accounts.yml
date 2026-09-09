@@ -1,0 +1,28 @@
+name: Verify deployed player accounts
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/verify-live-accounts.mjs
+      - .github/workflows/verify-accounts.yml
+permissions:
+  contents: read
+concurrency:
+  group: verify-player-accounts
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save --no-package-lock @supabase/supabase-js@2.57.0
+      - name: Verify registration, login and profile permissions
+        run: node scripts/verify-live-accounts.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
