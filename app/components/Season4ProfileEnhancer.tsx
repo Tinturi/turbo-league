@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import WeeklyHeroSelection from "@/app/components/WeeklyHeroSelection";
 
 export default function Season4ProfileEnhancer() {
   const pathname = usePathname();
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const [ready, setReady] = useState(false);
   const playerId = Number(pathname.match(/^\/player\/(\d+)/)?.[1] ?? 0);
 
@@ -18,6 +19,13 @@ export default function Season4ProfileEnhancer() {
       element.textContent?.includes("ЗАБЛОКИРОВАНЫ НА ЭТОЙ ИГРОВОЙ НЕДЕЛЕ")
     );
     if (oldHeroSection) oldHeroSection.style.display = "none";
+
+    const stats = page.querySelector<HTMLElement>(".profile-stats");
+    const doubleDown = stats?.nextElementSibling;
+    const root = rootRef.current;
+    if (root && doubleDown && doubleDown.parentElement === page) {
+      page.insertBefore(root, doubleDown);
+    }
 
     const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
     const nodes: Text[] = [];
@@ -33,14 +41,13 @@ export default function Season4ProfileEnhancer() {
     setReady(true);
     return () => {
       oldHeroSection?.style.removeProperty("display");
-      setReady(false);
     };
   }, [playerId]);
 
-  if (!playerId || !ready) return null;
+  if (!playerId) return null;
 
   return (
-    <div style={{ marginTop: 18 }}>
+    <div ref={rootRef} style={{ display: ready ? "block" : "none", marginBottom: 24 }}>
       <WeeklyHeroSelection playerId={playerId} />
     </div>
   );
