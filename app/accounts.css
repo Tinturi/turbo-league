@@ -1,5 +1,6 @@
 .container:has(> .account-card) { display: flex; flex-direction: column; min-height: calc(100svh - 68px); padding-top: 24px; padding-bottom: 24px; }
 .account-card { width: 100%; max-width: 540px; margin: auto; padding: 28px; flex-shrink: 0; }
+.container > .account-card:first-of-type { margin-top: auto; margin-bottom: auto; }
 .account-card h1 { font-size: clamp(24px, 5vw, 34px); }
 .account-tabs { display: flex; gap: 8px; margin: 24px 0; flex-wrap: wrap; }
 .account-tabs button, .account-secondary { color: #e9edf5; background: #151d2a; border: 1px solid #394356; border-radius: 10px; padding: 12px 16px; font: inherit; cursor: pointer; }
