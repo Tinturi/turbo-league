@@ -33,7 +33,7 @@ export async function allowAuthAttempt(req: NextRequest, action: string, usernam
   for (const identity of [`ip:${ip}`, `username:${username}`]) {
     const key = createHash("sha256").update(`${action}:${identity}`).digest("hex");
     const { data, error } = await supabaseAdmin.rpc("consume_auth_attempt", { attempt_key: key, attempt_limit: action === "register" ? 5 : 12 });
-    if (error) throw new Error("Rate limiter unavailable");
+    if (error) throw new Error(`Rate limiter unavailable (${error.code}: ${error.message})`);
     if (!data) return false;
   }
   return true;

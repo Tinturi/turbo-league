@@ -38,7 +38,7 @@ async function snapshot() {
 try {
   let ready = false;
   for (let attempt = 0; attempt < 60; attempt++) {
-    try { const result = await request('/api/auth'); if (result.status === 200 && result.data.release === 'accounts-20260909-v1') { ready = true; break; } } catch {}
+    try { const result = await request('/api/auth'); if (result.status === 200 && result.data.release === 'accounts-20260909-v2') { ready = true; break; } } catch {}
     await sleep(10000);
   }
   assert.ok(ready, 'New deployment did not become ready');
