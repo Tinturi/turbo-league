@@ -74,9 +74,9 @@ export default async function StatsPage() {
     <div style={{ margin: "0 calc(50% - 50vw)", minHeight: "calc(100vh - 68px)", background: "linear-gradient(rgba(7,9,13,.78), rgba(7,9,13,.95)), url('/turbo-bg.svg') center/cover fixed", padding: "54px max(20px, calc((100vw - 1100px)/2)) 70px" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ marginBottom: 28 }}>
-          <div style={{ color: "#e9b84b", fontSize: 12, fontWeight: 900, letterSpacing: ".15em", textTransform: "uppercase" }}>Turbo League · Season 3</div>
+          <div style={{ color: "#e9b84b", fontSize: 12, fontWeight: 900, letterSpacing: ".15em", textTransform: "uppercase" }}>Turbo League · Season 4</div>
           <h1 style={{ margin: "8px 0 8px", fontSize: "clamp(36px,6vw,64px)", fontFamily: "Georgia, 'Times New Roman', serif" }}>Статистика сезона</h1>
-          <p className="muted" style={{ margin: 0 }}>Только матчи третьего сезона — с 04.09.2026 03:18 по Новосибирску.</p>
+          <p className="muted" style={{ margin: 0 }}>Только зачётные матчи четвёртого сезона — с 09.09.2026 18:00 по Новосибирску.</p>
         </div>
 
         <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12, marginBottom: 28 }}>
@@ -84,14 +84,14 @@ export default async function StatsPage() {
         </section>
 
         <section className="card" style={{ marginBottom: 28 }}>
-          <div style={{ padding: "18px 20px", borderBottom: "1px solid #232836" }}><h2 style={{ margin: 0, fontSize: 22 }}>Серии игроков</h2><p className="muted" style={{ margin: "5px 0 0" }}>Текущая форма и рекорды каждого участника в Season 3.</p></div>
+          <div style={{ padding: "18px 20px", borderBottom: "1px solid #232836" }}><h2 style={{ margin: 0, fontSize: 22 }}>Серии игроков</h2><p className="muted" style={{ margin: "5px 0 0" }}>Текущая форма и рекорды каждого участника в Season 4.</p></div>
           <div style={{ overflowX: "auto" }}><table><thead><tr><th>Игрок</th><th>Текущая серия</th><th>Лучший W-стрик</th><th>Худший L-стрик</th><th>Пиковый рейтинг</th></tr></thead><tbody>
             {[...stats].sort((a, b) => b.rating - a.rating).map((player) => <tr key={player.id}><td><a className="player-link" href={`/player/${player.id}`}><span className="player-name">{player.name}</span></a></td><td>{player.currentStreakType ? <strong className={player.currentStreakType === "W" ? "win" : "loss"}>{player.currentStreakType === "W" ? "🔥" : "💀"} {player.currentStreakType}{player.currentStreak}</strong> : <span className="muted">—</span>}</td><td className="win">{player.bestWinStreak}</td><td className="loss">{player.worstLossStreak}</td><td style={{ fontWeight: 800 }}>{player.peakRating}</td></tr>)}
           </tbody></table></div>
         </section>
 
         <section className="card">
-          <div style={{ padding: "18px 20px", borderBottom: "1px solid #232836" }}><h2 style={{ margin: 0, fontSize: 22 }}>Последние события</h2><p className="muted" style={{ margin: "5px 0 0" }}>Живая хроника учтённых матчей Season 3.</p></div>
+          <div style={{ padding: "18px 20px", borderBottom: "1px solid #232836" }}><h2 style={{ margin: 0, fontSize: 22 }}>Последние события</h2><p className="muted" style={{ margin: "5px 0 0" }}>Живая хроника учтённых матчей Season 4.</p></div>
           <div style={{ display: "grid" }}>{latestEvents.length === 0 ? <div className="empty-matches">Событий пока нет.</div> : latestEvents.map((match) => <a key={`${match.match_id}-${match.player_id}`} href={`/match/${match.match_id}`} style={{ display: "flex", justifyContent: "space-between", gap: 18, padding: "15px 20px", borderBottom: "1px solid #232836" }}><div><strong>{names.get(match.player_id) ?? "Игрок"}</strong><div className="muted" style={{ marginTop: 4, fontSize: 13 }}>{formatDate(match.start_time)} · матч #{match.match_id}</div></div><div style={{ textAlign: "right" }}><strong className={match.won ? "win" : "loss"}>{match.won ? "ПОБЕДА" : "ПОРАЖЕНИЕ"}</strong><div className={match.rating_delta > 0 ? "win" : "loss"} style={{ marginTop: 4, fontWeight: 900 }}>{match.rating_delta > 0 ? "+" : ""}{match.rating_delta} → {match.rating_after}</div></div></a>)}</div>
         </section>
       </div>
