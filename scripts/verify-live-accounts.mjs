@@ -24,7 +24,7 @@ async function request(path, body, cookie, origin = site, contentType = 'applica
   return { status: response.status, data, cookie: response.headers.get('set-cookie')?.split(';')[0], headers: response.headers };
 }
 async function expectStatus(result, status, label) {
-  assert.equal(result.status, status, label);
+  assert.equal(result.status, status, `${label}: ${JSON.stringify(result.data).slice(0,500)}`);
   console.log(`PASS: ${label}`);
   return result;
 }
@@ -50,7 +50,9 @@ try {
   }
   const [a, b] = qaPlayers;
   await expectStatus(await request('/api/double-down', { playerId: a.id }), 401, 'Anonymous DD rejected');
-  await expectStatus(await request(`/api/avatar/${a.account_id}`, Buffer.from('test'), undefined, site, 'image/png'), 401, 'Anonymous avatar change rejected');
+  const anonymousAvatar = await request(`/api/avatar/${a.account_id}`, Buffer.from('test'), undefined, site, 'image/png');
+  assert.ok([401,403].includes(anonymousAvatar.status), 'Anonymous avatar write must be denied');
+  console.log('PASS: anonymous avatar change rejected');
   const registration = await expectStatus(await request('/api/auth', { action: 'register', username: prefix, password, playerId: a.id }), 200, 'Registration and automatic login');
   assert.ok(registration.cookie?.startsWith('tl-session='), 'Session cookie missing');
   assert.match(registration.headers.get('set-cookie'), /HttpOnly/i);
