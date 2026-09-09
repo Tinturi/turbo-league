@@ -4,7 +4,32 @@ import { useEffect, useRef, useState } from "react";
 
 export default function SiteMenu() {
   const [open, setOpen] = useState(false);
+  const [profile, setProfile] = useState<{ id: number; name: string; account_id: number } | null>(null);
+  const [avatar, setAvatar] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadProfile() {
+      try {
+        const response = await fetch("/api/auth", { cache: "no-store", signal: controller.signal });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+        setProfile(data.account ? data.profile : null);
+        setAvatar(null);
+        if (data.account && data.profile?.account_id) {
+          const image = await fetch(`/api/avatar/${data.profile.account_id}`, { cache: "no-store", signal: controller.signal });
+          if (image.ok) {
+            const result = await image.json();
+            if (!controller.signal.aborted) setAvatar(result.avatar ?? null);
+          }
+        }
+      } catch { /* Keep the menu usable if the connection is unavailable. */ }
+    }
+    void loadProfile();
+    return () => controller.abort();
+  }, [open]);
 
   useEffect(() => {
     function handleClick(event: MouseEvent) {
@@ -58,8 +83,17 @@ export default function SiteMenu() {
             zIndex: 50,
           }}
         >
+          <a
+            href={profile ? `/player/${profile.id}` : "/account"}
+            onClick={() => setOpen(false)}
+            style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 13px", borderRadius: 10, color: "#e9edf5", fontWeight: 700 }}
+          >
+            {profile ? <>
+              {avatar ? <img src={avatar} alt="" width={40} height={40} onError={() => setAvatar(null)} style={{ borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} /> : <span aria-hidden="true" style={{ width: 40, height: 40, borderRadius: "50%", background: "#2d3545", display: "grid", placeItems: "center", flexShrink: 0 }}>{profile.name.slice(0, 1).toUpperCase()}</span>}
+              <span style={{ minWidth: 0 }}><span style={{ display: "block", color: "#e9b84b" }}>Мой профиль</span><span style={{ display: "block", overflowWrap: "anywhere", fontSize: 14, marginTop: 4 }}>{profile.name}</span></span>
+            </> : "👤 Login / Регистрация"}
+          </a>
           {[
-            ["👤 Login / Регистрация", "/account"],
             ["🏆 Лидерборд", "/"],
             ["📊 Статистика сезона", "/stats"],
             ["📜 Регламент", "/rules"],
