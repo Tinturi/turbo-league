@@ -187,7 +187,10 @@ export default async function PlayerPage({ params, searchParams }: { params: Pro
     <main className="player-profile-page">
       <a className="back" href="/">← Назад к рейтингу</a>
       <section className="profile-head">
-        {avatar ? <img className="profile-avatar" src={avatar} alt="" /> : <div className="profile-avatar profile-avatar-fallback">{player.name.slice(0, 1)}</div>}
+        <div style={{ position: "relative", flexShrink: 0, lineHeight: 0 }}>
+          {avatar ? <img className="profile-avatar" src={avatar} alt="" /> : <div className="profile-avatar profile-avatar-fallback">{player.name.slice(0, 1)}</div>}
+          <AvatarEditor playerId={player.id} accountId={player.account_id} />
+        </div>
         <div><div className="muted">Профиль игрока · Season 3</div><h1>{player.name}</h1><div className="muted">OpenDota ID: {player.account_id}</div></div>
       </section>
 
@@ -198,7 +201,6 @@ export default async function PlayerPage({ params, searchParams }: { params: Pro
         <div className="stat">Winrate<b>{winrate}%</b></div>
       </section>
 
-      <AvatarEditor playerId={player.id} accountId={player.account_id} />
       <DoubleDownCard playerId={player.id} />
 
       <section className="card" style={{ padding: 18, marginBottom: 22, border: "1px solid rgba(255,118,118,.22)", background: "linear-gradient(135deg, rgba(47,18,24,.72), rgba(15,19,28,.96) 48%, rgba(10,14,21,.96))" }}>
