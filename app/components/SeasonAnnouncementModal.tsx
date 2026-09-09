@@ -18,7 +18,7 @@ export default function SeasonAnnouncementModal() {
           <span className={styles.kicker}>TURBO LEAGUE · SEASON 3</span>
           <h2 className={styles.title}>Третий сезон завершён!</h2>
           <p className={styles.copy}>Все призы отправлены. Поздравляем победителя и спасибо каждому участнику за игры!</p>
-          <p className={styles.subcopy}>Готовимся к Season 4. Зарегистрируйтесь и привяжите свой профиль игрока.</p>
+          <p className={styles.subcopy}>Season 4 уже начался. Выбирайте героев игровой недели и возвращайтесь в борьбу за первое место.</p>
         </div>
       </section>
     </div>
