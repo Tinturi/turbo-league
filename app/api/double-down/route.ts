@@ -27,13 +27,15 @@ async function getStatus(playerId: number) {
   const weekStartIso = weekStart.toISOString();
   await expireStalePending(playerId);
 
-  const [{ data: bonuses, error: bonusError }, { data: activations, error: activationError }] = await Promise.all([
+  const [{ data: bonuses, error: bonusError }, { data: activations, error: activationError }, { data: latest, error: latestError }] = await Promise.all([
     supabaseAdmin.from("double_down_bonuses").select("id,source_match_id,reason").eq("player_id", playerId).eq("week_start", weekStartIso),
     supabaseAdmin.from("double_down_activations").select("id,activated_at,status,match_id").eq("player_id", playerId).eq("week_start", weekStartIso).order("activated_at", { ascending: false }),
+    supabaseAdmin.from("double_down_activations").select("activated_at").eq("player_id", playerId).order("activated_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
 
   if (bonusError) throw new Error(bonusError.message);
   if (activationError) throw new Error(activationError.message);
+  if (latestError) throw new Error(latestError.message);
 
   const bonusCount = bonuses?.length ?? 0;
   const activeRows = (activations ?? []).filter((row) => row.status === "pending" || row.status === "used");
@@ -60,6 +62,10 @@ async function getStatus(playerId: number) {
 
   const nextReset = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
   return {
+    serverNow: new Date().toISOString(),
+    lastActivatedAt: latest?.activated_at ?? null,
+    nextActivationAt: latest ? new Date(new Date(latest.activated_at).getTime() + 10 * 60 * 1000).toISOString() : null,
+    pendingCount: activeRows.filter(row => row.status === "pending").length,
     weekStart: weekStartIso,
     nextReset: nextReset.toISOString(),
     base: BASE_DOUBLE_DOWNS,
@@ -104,11 +110,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const status = await getStatus(playerId);
-    if (status.pending) return NextResponse.json({ ok: false, error: "Double Down уже активирован и ждёт текущий матч", status }, { status: 409 });
+    if (status.nextActivationAt && Date.parse(status.nextActivationAt) > Date.now()) return NextResponse.json({ ok: false, error: "Повторная активация доступна через 10 минут после предыдущей", status }, { status: 409 });
     if (status.remaining <= 0) return NextResponse.json({ ok: false, error: "Double Down на этой неделе закончились", status }, { status: 409 });
 
     const { error } = await supabaseAdmin.rpc("activate_owned_double_down", { target_player: playerId });
-    if (error?.code === "P0001") return NextResponse.json({ ok: false, error: "Double Down уже активирован или лимит исчерпан", status: await getStatus(playerId) }, { status: 409 });
+    if (error?.code === "P0001") return NextResponse.json({ ok: false, error: "Ещё не прошло 10 минут после активации или заряды закончились", status: await getStatus(playerId) }, { status: 409 });
     if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true, status: await getStatus(playerId), message: "Double Down активирован. Система привяжет его к матчу, начавшемуся не более 10 минут назад." });
   } catch (error) {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 type Status = {
+  serverNow: string; lastActivatedAt: string | null; nextActivationAt: string | null; pendingCount: number;
   weekStart: string; nextReset: string; base: number; bonuses: number; total: number; used: number;
   pending: { id: number; activatedAt: string } | null; remaining: number;
   extraRating: number; extraWon: number; extraLost: number;
@@ -17,6 +18,8 @@ function signed(value: number) { return value > 0 ? `+${value}` : `${value}`; }
 
 export default function DoubleDownCard({ playerId }: { playerId: number }) {
   const [status, setStatus] = useState<Status | null>(null);
+  const [clock, setClock] = useState({ server: 0, received: 0 });
+  const [now, setNow] = useState(0);
   const [loading, setLoading] = useState(true);
   const [activating, setActivating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -32,20 +35,41 @@ export default function DoubleDownCard({ playerId }: { playerId: number }) {
       const response = await fetch(`/api/double-down?playerId=${playerId}`, { cache: "no-store" });
       const data = (await response.json()) as ApiResponse;
       if (!response.ok || !data.ok || !data.status) throw new Error(data.error || "Не удалось загрузить Double Down");
-      setStatus(data.status);
+      setStatus(data.status); setClock({ server: Date.parse(data.status.serverNow), received: Date.now() });
     } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
     finally { setLoading(false); }
   }
-  useEffect(() => { void load(); }, [playerId]);
+  useEffect(() => {
+    void load();
+    const refresh = window.setInterval(() => { void load(); }, 10 * 60 * 1000);
+    const focus = () => { void load(); };
+    window.addEventListener("focus", focus);
+    return () => { window.clearInterval(refresh); window.removeEventListener("focus", focus); };
+  }, [playerId]);
+  useEffect(() => {
+    const tick = () => setNow(clock.server + Date.now() - clock.received);
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [clock]);
+  const secondsLeft = status?.nextActivationAt ? Math.max(0, Math.ceil((Date.parse(status.nextActivationAt) - now) / 1000)) : 0;
+  const coolingDown = secondsLeft > 0;
+  useEffect(() => {
+    if (!status?.nextActivationAt || !clock.received) return;
+    const delay = Date.parse(status.nextActivationAt) - (clock.server + Date.now() - clock.received);
+    if (delay <= 0) return;
+    const timer = window.setTimeout(() => { void load(); }, delay + 250);
+    return () => window.clearTimeout(timer);
+  }, [status?.nextActivationAt, clock, playerId]);
 
   async function activate() {
-    if (!isOwner || !status || activating || status.pending || status.remaining <= 0) return;
+    if (!isOwner || !status || activating || coolingDown || status.remaining <= 0) return;
     setActivating(true); setError(null); setMessage(null);
     try {
       const response = await fetch("/api/double-down", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playerId }) });
       const data = (await response.json()) as ApiResponse;
-      if (!response.ok || !data.ok || !data.status) throw new Error(data.error || "Не удалось активировать Double Down");
-      setStatus(data.status); setMessage(data.message || "Double Down активирован");
+      if (!response.ok || !data.ok || !data.status) { if (data.status) { setStatus(data.status); setClock({ server: Date.parse(data.status.serverNow), received: Date.now() }); } throw new Error(data.error || "Не удалось активировать Double Down"); }
+      setStatus(data.status); setClock({ server: Date.parse(data.status.serverNow), received: Date.now() }); setMessage(data.message || "Double Down активирован");
     } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
     finally { setActivating(false); }
   }
@@ -76,13 +100,13 @@ export default function DoubleDownCard({ playerId }: { playerId: number }) {
       </div>
 
       <div style={{ marginTop: 18, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <button type="button" onClick={activate} disabled={!isOwner || loading || activating || Boolean(status?.pending) || (status?.remaining ?? 0) <= 0} style={{ border: "1px solid rgba(255,190,73,.62)", borderRadius: 13, padding: "13px 18px", background: status?.pending ? "rgba(255,156,45,.15)" : "#e9b84b", color: status?.pending ? "#f4bf66" : "#17120a", fontWeight: 900, fontSize: 14, cursor: loading || activating || status?.pending || (status?.remaining ?? 0) <= 0 ? "default" : "pointer", opacity: !isOwner || loading || activating || (status?.remaining ?? 0) <= 0 ? .66 : 1 }}>
-          {activating ? "АКТИВИРУЮ…" : status?.pending ? "🔥 DOUBLE DOWN АКТИВЕН" : "🔥 АКТИВИРОВАТЬ DOUBLE DOWN"}
+        <button type="button" onClick={activate} disabled={!isOwner || loading || activating || coolingDown || (status?.remaining ?? 0) <= 0} style={{ border: "1px solid rgba(255,190,73,.62)", borderRadius: 13, padding: "13px 18px", background: coolingDown ? "rgba(255,156,45,.15)" : "#e9b84b", color: coolingDown ? "#f4bf66" : "#17120a", fontWeight: 900, fontSize: 14, cursor: loading || activating || coolingDown || (status?.remaining ?? 0) <= 0 ? "default" : "pointer", opacity: !isOwner || loading || activating || (status?.remaining ?? 0) <= 0 ? .66 : 1 }}>
+          {activating ? "АКТИВИРУЮ…" : coolingDown ? "🔥 DOUBLE DOWN АКТИВИРОВАН" : "🔥 АКТИВИРОВАТЬ DOUBLE DOWN"}
         </button>
         {!isOwner && <a href="/account">Войдите как владелец профиля для активации</a>}
         <span className="muted" style={{ fontSize: 12 }}>Новая неделя: {formatReset(status?.nextReset)} по Новосибирску</span>
       </div>
-      {status?.pending ? <div style={{ marginTop: 13, padding: "11px 13px", borderRadius: 11, color: "#f2c36e", background: "rgba(233,184,75,.08)", border: "1px solid rgba(233,184,75,.22)" }}>DD зарезервирован. После следующего обновления таблицы он будет привязан к подходящему матчу.</div> : null}
+      {status?.lastActivatedAt ? <div style={{ marginTop: 13, padding: "11px 13px", borderRadius: 11, color: "#f2c36e", background: "rgba(233,184,75,.08)", border: "1px solid rgba(233,184,75,.22)" }}>Вы нажали Double Down: {formatReset(status.lastActivatedAt)}. {coolingDown ? <>Следующая активация через {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}.</> : status.remaining > 0 ? "Можно активировать следующий заряд, не дожидаясь результата предыдущей игры." : "Заряды на этой неделе закончились."} Ожидают учёта: {status.pendingCount}.</div> : null}
       {message ? <div style={{ marginTop: 13, color: "#72e0a6", fontSize: 13 }}>{message}</div> : null}
       {error ? <div style={{ marginTop: 13, color: "#ff8585", fontSize: 13 }}>{error}</div> : null}
       <div className="muted" style={{ marginTop: 13, fontSize: 12 }}>База: 5 DD в неделю. За каждые 3 поражения подряд без победы между ними система автоматически добавляет ещё +1 DD после синхронизации.</div>
