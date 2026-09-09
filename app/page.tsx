@@ -51,7 +51,7 @@ export default async function Home() {
       <section className="hero">
         <div className="hero-content">
           <h1>Turbo League</h1>
-          <p>Season 3 · первые 5 игр ±50, далее ±25.</p>
+          <p>Season 4 · старт 09.09.2026 18:00 · первые 5 зачётных игр ±50, далее ±25.</p>
           <RefreshCountdown />
         </div>
       </section>
