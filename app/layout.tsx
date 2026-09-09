@@ -3,7 +3,6 @@ import "./season3.css";
 import "./season4.css";
 import "./accounts.css";
 import SiteMenu from "@/app/components/SiteMenu";
-import Season4ProfileEnhancer from "@/app/components/Season4ProfileEnhancer";
 
 export const metadata = {
   title: "Turbo League",
@@ -40,7 +39,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
         <main className="container">{children}</main>
-        <Season4ProfileEnhancer />
       </body>
     </html>
   );
