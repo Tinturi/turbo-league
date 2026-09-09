@@ -1,0 +1,3 @@
+.hero h1::after {
+  content: "SEASON\00a0 4";
+}
