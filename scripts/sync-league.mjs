@@ -69,20 +69,24 @@ async function fetchOpenDotaMatches(accountId) {
 
 async function getWeeklySelections(playerId) {
   const firstWeek = getWeekStart(new Date(SEASON_START_ISO)).toISOString();
-  const { data, error } = await supabaseAdmin.from("weekly_hero_selections").select("week_start,status,hero_ids,selected_at").eq("player_id", playerId).gte("week_start", firstWeek).order("week_start", { ascending: true });
+  const { data, error } = await supabaseAdmin.from("weekly_hero_selection_history").select("week_start,hero_ids,selected_at").eq("player_id", playerId).gte("week_start", firstWeek).order("selected_at", { ascending: true });
   if (error) throw new Error(`Weekly heroes lookup: ${error.message}`);
   return data ?? [];
 }
 
 function filterMatchesByWeeklyHeroes(matches, selections) {
-  const byWeek = new Map(selections.map((row) => [new Date(row.week_start).toISOString(), row]));
+  const byWeek = new Map();
+  for (const row of selections) {
+    const key = new Date(row.week_start).toISOString();
+    byWeek.set(key, [...(byWeek.get(key) ?? []), row]);
+  }
   const eligible = [], ignored = [];
   for (const match of matches) {
     const startUnix = Number(match.start_time ?? 0), heroId = Number(match.hero_id ?? 0);
     if (!startUnix || !heroId) { ignored.push({ match, reason: "нет данных о герое/времени" }); continue; }
-    const startDate = new Date(startUnix * 1000), weekStart = getWeekStart(startDate).toISOString(), selection = byWeek.get(weekStart);
-    if (!selection || selection.status !== "selected" || !selection.selected_at) { ignored.push({ match, reason: "герои недели не выбраны" }); continue; }
-    if (startDate.getTime() < new Date(selection.selected_at).getTime()) { ignored.push({ match, reason: "матч начался до подтверждения героев" }); continue; }
+    const startDate = new Date(startUnix * 1000), weekStart = getWeekStart(startDate).toISOString();
+    const selection = [...(byWeek.get(weekStart) ?? [])].reverse().find((row) => new Date(row.selected_at).getTime() <= startDate.getTime());
+    if (!selection) { ignored.push({ match, reason: "матч начался до выбора действующей четвёрки" }); continue; }
     const heroIds = new Set((selection.hero_ids ?? []).map(Number));
     if (!heroIds.has(heroId)) { ignored.push({ match, reason: `hero ${heroId} не входит в четвёрку недели` }); continue; }
     eligible.push(match);
@@ -129,6 +133,21 @@ async function grantLossStreakBonuses(playerId, eligibleMatches) {
   return { weeklyMatches, bonusMilestones: granted };
 }
 
+async function grantHeroRerollBonuses(playerId, eligibleMatches) {
+  const weekStart = getWeekStart(), weekStartUnix = Math.floor(weekStart.getTime() / 1000);
+  const weeklyMatches = eligibleMatches.filter((m) => Number(m.start_time ?? 0) >= weekStartUnix);
+  let consecutiveLosses = 0, granted = 0;
+  for (const match of weeklyMatches) {
+    if (didPlayerWin(match)) { consecutiveLosses = 0; continue; }
+    consecutiveLosses += 1;
+    if (consecutiveLosses % 5 !== 0) continue;
+    const { error } = await supabaseAdmin.from("weekly_hero_reroll_bonuses").upsert({ player_id: playerId, week_start: weekStart.toISOString(), source_match_id: Number(match.match_id) }, { onConflict: "player_id,source_match_id", ignoreDuplicates: true });
+    if (error) throw new Error(`Weekly hero reroll bonus ${match.match_id}: ${error.message}`);
+    granted += 1;
+  }
+  return granted;
+}
+
 async function syncPlayer(player) {
   console.log(`\n▶ ${player.name} (${player.account_id})`);
   const [rawMatches, selections] = await Promise.all([fetchOpenDotaMatches(player.account_id), getWeeklySelections(player.id)]);
@@ -142,8 +161,8 @@ async function syncPlayer(player) {
   const { data: existingRows, error: existingError } = await supabaseAdmin.from("matches").select("match_id,start_time,hero_id,won,rating_delta,rating_after").eq("player_id",player.id).gte("start_time",SEASON_START_ISO);
   if(existingError) throw new Error(`Supabase existing matches: ${existingError.message}`); const existingById=new Map((existingRows??[]).map(r=>[Number(r.match_id),r]));
   for(let index=0;index<eligibleMatches.length;index+=1){const match=eligibleMatches[index],matchId=Number(match.match_id),won=didPlayerWin(match),requestedDelta=theoreticalDelta(won,index,doubleDownMatchIds.has(matchId)),nextRating=Math.max(0,currentRating+requestedDelta),ratingDelta=nextRating-currentRating;currentRating=nextRating;if(won)wins+=1;else losses+=1;const expected={match_id:matchId,player_id:player.id,start_time:match.start_time?new Date(Number(match.start_time)*1000).toISOString():null,hero_id:match.hero_id==null?null:Number(match.hero_id),won,rating_delta:ratingDelta,rating_after:currentRating,raw:match};const existing=existingById.get(matchId);if(!existing){const{error:e}=await supabaseAdmin.from("matches").insert(expected);if(e)throw new Error(`Match ${matchId}: ${e.message}`);added+=1;}else if(Number(existing.rating_delta)!==ratingDelta||Number(existing.rating_after)!==currentRating||Boolean(existing.won)!==won||Number(existing.hero_id??0)!==Number(expected.hero_id??0)){const{error:e}=await supabaseAdmin.from("matches").update({hero_id:expected.hero_id,won,rating_delta:ratingDelta,rating_after:currentRating,raw:match}).eq("match_id",matchId).eq("player_id",player.id);if(e)throw new Error(`Repair match ${matchId}: ${e.message}`);repaired+=1;}}
-  const {bonusMilestones}=await grantLossStreakBonuses(player.id,eligibleMatches); const{error:playerUpdateError}=await supabaseAdmin.rpc("apply_player_sync",{target_player:player.id,base_rating:currentRating,new_wins:wins,new_losses:losses,season_start:SEASON_START_ISO});if(playerUpdateError)throw new Error(`Player update: ${playerUpdateError.message}`);
-  const totalSeasonMatches=eligibleMatches.length,result={player:player.name,season:4,startRating:START_RATING,turboAfterStart:allTurboMatches.length,ignoredByWeeklyHeroes:ignored.length,removedStored,seasonMatches:totalSeasonMatches,calibrationPlayed:Math.min(totalSeasonMatches,CALIBRATION_MATCHES),regularPlayed:Math.max(0,totalSeasonMatches-CALIBRATION_MATCHES),added,repaired,doubleDownMatches:doubleDownMatchIds.size,bonusMilestones,rating:currentRating,wins,losses};console.log(`✓ ${JSON.stringify(result)}`);return result;
+  const [{bonusMilestones},heroRerollBonusMilestones]=await Promise.all([grantLossStreakBonuses(player.id,eligibleMatches),grantHeroRerollBonuses(player.id,eligibleMatches)]); const{error:playerUpdateError}=await supabaseAdmin.rpc("apply_player_sync",{target_player:player.id,base_rating:currentRating,new_wins:wins,new_losses:losses,season_start:SEASON_START_ISO});if(playerUpdateError)throw new Error(`Player update: ${playerUpdateError.message}`);
+  const totalSeasonMatches=eligibleMatches.length,result={player:player.name,season:4,startRating:START_RATING,turboAfterStart:allTurboMatches.length,ignoredByWeeklyHeroes:ignored.length,removedStored,seasonMatches:totalSeasonMatches,calibrationPlayed:Math.min(totalSeasonMatches,CALIBRATION_MATCHES),regularPlayed:Math.max(0,totalSeasonMatches-CALIBRATION_MATCHES),added,repaired,doubleDownMatches:doubleDownMatchIds.size,bonusMilestones,heroRerollBonusMilestones,rating:currentRating,wins,losses};console.log(`✓ ${JSON.stringify(result)}`);return result;
 }
 
 async function main(){console.log(`Turbo League Season 4 sync started: ${new Date().toISOString()}`);await cleanupSeason3Data();const{data,error}=await supabaseAdmin.from("players").select("id,name,account_id,rating").eq("active",true).order("id");if(error)throw new Error(`Players lookup failed: ${error.message}`);const players=data??[],results=[],failures=[];console.log(`Active players: ${players.length}`);for(let i=0;i<players.length;i+=CONCURRENCY){const batch=players.slice(i,i+CONCURRENCY),settled=await Promise.allSettled(batch.map(syncPlayer));settled.forEach((entry,index)=>{const player=batch[index];if(entry.status==="fulfilled")results.push(entry.value);else{const message=entry.reason instanceof Error?entry.reason.message:String(entry.reason);failures.push({player:player.name,error:message});console.error(`✗ ${player.name}: ${message}`);}});}const addedTotal=results.reduce((sum,item)=>sum+item.added,0);console.log(`\nTurbo League Season 4 sync finished: added=${addedTotal}, success=${results.length}, failed=${failures.length}`);if(failures.length>0){console.error(`Failures: ${JSON.stringify(failures)}`);process.exitCode=1;}}

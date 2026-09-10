@@ -13,6 +13,10 @@ type Status = {
   heroIds: number[];
   selectedAt: string | null;
   skippedAt: string | null;
+  rerollBase: number;
+  rerollBonuses: number;
+  rerollUsed: number;
+  rerollRemaining: number;
 };
 
 type Modal = "intro" | "picker" | "warning" | null;
@@ -85,7 +89,7 @@ export default function WeeklyHeroSelection({ playerId }: { playerId: number }) 
     });
   }
 
-  async function post(action: "skip" | "select") {
+  async function post(action: "skip" | "select" | "reroll") {
     setSaving(true);
     setError("");
     try {
@@ -121,13 +125,19 @@ export default function WeeklyHeroSelection({ playerId }: { playerId: number }) 
         </div>
 
         {status?.status === "selected" ? (
-          <div className={styles.heroRow}>
-            {selectedHeroes.map((hero) => (
-              <div className={styles.heroCard} key={hero.id} title={hero.name}>
-                {hero.image ? <img className={styles.heroPortrait} src={hero.image} alt={hero.name} /> : <div className={styles.heroPortrait} />}
-                <div className={styles.heroName}>{hero.name}</div>
-              </div>
-            ))}
+          <div>
+            <div className={styles.heroRow}>
+              {selectedHeroes.map((hero) => (
+                <div className={styles.heroCard} key={hero.id} title={hero.name}>
+                  {hero.image ? <img className={styles.heroPortrait} src={hero.image} alt={hero.name} /> : <div className={styles.heroPortrait} />}
+                  <div className={styles.heroName}>{hero.name}</div>
+                </div>
+              ))}
+            </div>
+            {status.owner ? <div className={styles.rerollBar}>
+              <div><strong>Изменение четвёрки: {status.rerollRemaining}</strong><span className={styles.note}>1 заряд каждую неделю{status.rerollBonuses ? ` · +${status.rerollBonuses} за серии из 5 поражений` : " · дополнительные за 5 поражений подряд"}</span></div>
+              <button className={styles.buttonSecondary} disabled={status.rerollRemaining <= 0} type="button" onClick={() => { setSelected([]); setError(""); setModal("picker"); }}>Изменить героев</button>
+            </div> : null}
           </div>
         ) : (
           <div className={styles.warning}>
@@ -172,7 +182,7 @@ export default function WeeklyHeroSelection({ playerId }: { playerId: number }) 
               <div>
                 <div className={styles.kicker}>ВЫБОР ГЕРОЕВ НЕДЕЛИ</div>
                 <h2>Выберите ровно 4 героев</h2>
-                <div className={styles.note}>На выбранных героях можно играть сколько угодно зачётных матчей до следующего недельного обновления.</div>
+                <div className={styles.note}>{status?.status === "selected" ? "Новая четвёрка начнёт действовать с момента подтверждения. Уже сыгранные матчи сохранятся." : "На выбранных героях можно играть сколько угодно зачётных матчей до следующего недельного обновления."}</div>
               </div>
               <div className={styles.counter}>{selected.length} / 4</div>
             </div>
@@ -204,7 +214,7 @@ export default function WeeklyHeroSelection({ playerId }: { playerId: number }) 
               </div>
               <div className={styles.actions}>
                 <button className={styles.buttonSecondary} type="button" disabled={saving} onClick={() => setModal(status?.status === "not_started" ? "intro" : null)}>Назад</button>
-                <button className={styles.button} type="button" disabled={saving || selected.length !== 4} onClick={() => void post("select")}>{saving ? "Сохраняем…" : "Подтвердить 4 героев"}</button>
+                <button className={styles.button} type="button" disabled={saving || selected.length !== 4} onClick={() => void post(status?.status === "selected" ? "reroll" : "select")}>{saving ? "Сохраняем…" : status?.status === "selected" ? "Изменить четвёрку" : "Подтвердить 4 героев"}</button>
               </div>
             </div>
           </section>

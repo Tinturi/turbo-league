@@ -25,13 +25,12 @@ async function readStatus(playerId: number, req?: NextRequest) {
   const weekStart = getWeekStart();
   const weekStartIso = weekStart.toISOString();
   const nextReset = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await supabaseAdmin
-    .from("weekly_hero_selections")
-    .select("status,hero_ids,selected_at,skipped_at")
-    .eq("player_id", playerId)
-    .eq("week_start", weekStartIso)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
+  const [{ data, error }, { count: selectionCount, error: historyError }, { count: bonusCount, error: bonusError }] = await Promise.all([
+    supabaseAdmin.from("weekly_hero_selections").select("status,hero_ids,selected_at,skipped_at").eq("player_id", playerId).eq("week_start", weekStartIso).maybeSingle(),
+    supabaseAdmin.from("weekly_hero_selection_history").select("id", { count: "exact", head: true }).eq("player_id", playerId).eq("week_start", weekStartIso),
+    supabaseAdmin.from("weekly_hero_reroll_bonuses").select("source_match_id", { count: "exact", head: true }).eq("player_id", playerId).eq("week_start", weekStartIso),
+  ]);
+  if (error || historyError || bonusError) throw new Error(error?.message || historyError?.message || bonusError?.message);
 
   let owner = false;
   if (req) {
@@ -39,6 +38,8 @@ async function readStatus(playerId: number, req?: NextRequest) {
     owner = Number(account?.player_id) === playerId;
   }
 
+  const usedRerolls = Math.max(0, (selectionCount ?? 0) - (data?.status === "selected" ? 1 : 0));
+  const rerollTotal = 1 + (bonusCount ?? 0);
   return {
     weekStart: weekStartIso,
     nextReset,
@@ -47,6 +48,10 @@ async function readStatus(playerId: number, req?: NextRequest) {
     heroIds: Array.isArray(data?.hero_ids) ? data.hero_ids.map(Number) : [],
     selectedAt: data?.selected_at ?? null,
     skippedAt: data?.skipped_at ?? null,
+    rerollBase: 1,
+    rerollBonuses: bonusCount ?? 0,
+    rerollUsed: usedRerolls,
+    rerollRemaining: Math.max(0, rerollTotal - usedRerolls),
   };
 }
 
@@ -81,7 +86,7 @@ export async function POST(req: NextRequest) {
     .eq("week_start", weekStartIso)
     .maybeSingle();
   if (existingError) return NextResponse.json({ ok: false, error: existingError.message }, { status: 500, headers: privateHeaders });
-  if (existing?.status === "selected") {
+  if (existing?.status === "selected" && body.action !== "reroll") {
     return NextResponse.json({ ok: false, error: "Герои на эту игровую неделю уже выбраны и изменить их нельзя." }, { status: 409, headers: privateHeaders });
   }
 
@@ -101,22 +106,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, status: await readStatus(playerId, req), message: "Выбор пропущен. До выбора четырёх героев матчи не идут в зачёт." }, { headers: privateHeaders });
     }
 
-    if (body.action === "select") {
+    if (body.action === "select" || body.action === "reroll") {
       const heroIds = Array.isArray(body.heroIds) ? [...new Set(body.heroIds.map(Number))] : [];
       if (heroIds.length !== 4 || heroIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
         return NextResponse.json({ ok: false, error: "Нужно выбрать ровно 4 разных героя." }, { status: 400, headers: privateHeaders });
       }
+      if (body.action === "reroll") {
+        if (existing?.status !== "selected") return NextResponse.json({ ok: false, error: "Сначала выберите начальную четвёрку героев." }, { status: 409, headers: privateHeaders });
+        const { error } = await supabaseAdmin.rpc("reroll_owned_weekly_heroes", { target_player: playerId, new_heroes: heroIds });
+        if (error?.code === "P0001") return NextResponse.json({ ok: false, error: error.message.includes("different") ? "Выберите другую четвёрку героев." : "Заряды изменения героев закончились." }, { status: 409, headers: privateHeaders });
+        if (error) throw new Error(error.message);
+        return NextResponse.json({ ok: true, status: await readStatus(playerId, req), message: "Четвёрка героев изменена. Новые матчи считаются по ней с этого момента." }, { headers: privateHeaders });
+      }
       const now = new Date().toISOString();
-      const { error } = await supabaseAdmin.from("weekly_hero_selections").upsert({
-        player_id: playerId,
-        week_start: weekStartIso,
-        status: "selected",
-        hero_ids: heroIds,
-        selected_at: now,
-        skipped_at: null,
-        updated_at: now,
-      }, { onConflict: "player_id,week_start" });
+      const { error } = await supabaseAdmin.from("weekly_hero_selections").upsert({ player_id: playerId, week_start: weekStartIso, status: "selected", hero_ids: heroIds, selected_at: now, skipped_at: null, updated_at: now }, { onConflict: "player_id,week_start" });
       if (error) throw new Error(error.message);
+      const { error: historyError } = await supabaseAdmin.from("weekly_hero_selection_history").insert({ player_id: playerId, week_start: weekStartIso, hero_ids: heroIds, selected_at: now });
+      if (historyError?.code !== "23505" && historyError) throw new Error(historyError.message);
       return NextResponse.json({ ok: true, status: await readStatus(playerId, req), message: "Герои игровой недели зафиксированы." }, { headers: privateHeaders });
     }
 
