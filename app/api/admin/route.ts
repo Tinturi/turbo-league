@@ -1,75 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { currentAccount, privateHeaders } from "@/lib/auth";
+import { isLeagueAdmin } from "@/lib/admin-identity";
+import { sameOrigin } from "@/lib/auth-input";
+import { getStatus } from "@/lib/dd-status";
 
 export const dynamic = "force-dynamic";
+function reply(body: object, status = 200) { return NextResponse.json(body, { status, headers: privateHeaders }); }
 
-type AdminBody = {
-  password?: string;
-  action?: "list" | "update";
-  playerId?: number;
-  rating?: number;
-};
-
-function authorized(password?: string) {
-  const adminSecret = process.env.ADMIN_SECRET;
-  return Boolean(adminSecret && password && password === adminSecret);
+export async function GET(req: NextRequest) {
+  try {
+    const account = await currentAccount(req);
+    if (!isLeagueAdmin(account)) return reply({ ok: false, error: "Доступ только для администратора Tinturi" }, account ? 403 : 401);
+    const { data, error } = await supabaseAdmin.from("players").select("id,name,rating").eq("active", true).order("name");
+    if (error) throw error;
+    return reply({ ok: true, players: await Promise.all((data ?? []).map(async player => ({ ...player, remaining: (await getStatus(player.id)).remaining }))) });
+  } catch { return reply({ ok: false, error: "Не удалось загрузить админку" }, 503); }
 }
 
 export async function POST(req: NextRequest) {
-  let body: AdminBody;
-
+  if (!sameOrigin(req)) return reply({ ok: false, error: "Недопустимый источник запроса" }, 403);
   try {
-    body = (await req.json()) as AdminBody;
-  } catch {
-    return NextResponse.json({ ok: false, error: "Некорректный запрос" }, { status: 400 });
-  }
-
-  if (!process.env.ADMIN_SECRET) {
-    return NextResponse.json(
-      { ok: false, error: "ADMIN_SECRET не настроен в Netlify" },
-      { status: 500 },
-    );
-  }
-
-  if (!authorized(body.password)) {
-    return NextResponse.json({ ok: false, error: "Неверный пароль" }, { status: 401 });
-  }
-
-  if (body.action === "list") {
-    const { data, error } = await supabaseAdmin
-      .from("players")
-      .select("id,name,account_id,rating,wins,losses")
-      .eq("active", true)
-      .order("rating", { ascending: false });
-
-    if (error) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    const account = await currentAccount(req);
+    if (!account || !isLeagueAdmin(account)) return reply({ ok: false, error: "Доступ только для администратора Tinturi" }, account ? 403 : 401);
+    let body;
+    try { const text = await req.text(); if (text.length > 2048) throw new Error(); body = JSON.parse(text); }
+    catch { return reply({ ok: false, error: "Некорректный запрос" }, 400); }
+    if (!Number.isSafeInteger(body?.playerId) || body.playerId <= 0 || !["rating", "dd"].includes(body?.action)
+      || !Number.isSafeInteger(body?.value) || !Number.isSafeInteger(body?.expected)
+      || (body.action === "rating" ? body.value < 0 || body.value > 1000000 : body.value === 0 || Math.abs(body.value) > 100)) {
+      return reply({ ok: false, error: "Проверьте значения: рейтинг 0–1000000, изменение DD от 1 до 100" }, 400);
     }
-
-    return NextResponse.json({ ok: true, players: data ?? [] });
-  }
-
-  if (body.action === "update") {
-    if (!Number.isInteger(body.playerId) || !Number.isInteger(body.rating)) {
-      return NextResponse.json(
-        { ok: false, error: "Игрок или рейтинг указаны неверно" },
-        { status: 400 },
-      );
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from("players")
-      .update({ rating: body.rating })
-      .eq("id", body.playerId)
-      .select("id,name,rating")
-      .single();
-
-    if (error) {
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ ok: true, player: data });
-  }
-
-  return NextResponse.json({ ok: false, error: "Неизвестное действие" }, { status: 400 });
+    const { error } = await supabaseAdmin.rpc("admin_update_player", { actor_id: account.user_id, target_player: body.playerId, operation: body.action, new_value: body.value, expected_value: body.expected });
+    if (error) return reply({ ok: false, error: error.code === "P0001" ? "Данные изменились или свободных DD недостаточно. Обновите значения и повторите." : "Не удалось сохранить изменение" }, error.code === "P0001" ? 409 : 503);
+    return reply({ ok: true });
+  } catch { return reply({ ok: false, error: "Сервис временно недоступен" }, 503); }
 }

@@ -1,0 +1,33 @@
+begin;
+do $$
+declare p bigint; a uuid := '3d8f7c0d-82f9-458c-af0a-a296d66948a6'; blocked boolean; n integer;
+begin
+  insert into public.players(name,account_id,rating) values('__admin_transaction_test__',-9090950,100) returning id into p;
+  blocked := false;
+  begin perform public.admin_update_player(gen_random_uuid(),p,'rating',300,100); exception when raise_exception then blocked:=true; end;
+  if not blocked then raise exception 'Non-admin allowed'; end if;
+  perform public.admin_update_player(a,p,'rating',300,100);
+  perform public.apply_player_sync(p,150,2,1,'2026-09-09T11:00:00Z');
+  select rating into n from public.players where id=p;
+  if n<>350 then raise exception 'Sync lost rating adjustment'; end if;
+  blocked:=false;
+  begin perform public.admin_update_player(a,p,'rating',400,300); exception when raise_exception then blocked:=true; end;
+  if not blocked then raise exception 'Stale rating accepted'; end if;
+  perform public.admin_update_player(a,p,'dd',2,5);
+  perform public.admin_update_player(a,p,'dd',-6,7);
+  perform public.activate_owned_double_down(p);
+  blocked:=false;
+  begin perform public.admin_update_player(a,p,'dd',-1,0); exception when raise_exception then blocked:=true; end;
+  if not blocked then raise exception 'Reserved DD removed'; end if;
+  update public.double_down_activations set activated_at=activated_at-interval '10 minutes' where player_id=p;
+  blocked:=false;
+  begin perform public.activate_owned_double_down(p); exception when raise_exception then blocked:=true; end;
+  if not blocked then raise exception 'Removed charge still usable'; end if;
+  select count(*) into n from public.league_admin_audit where player_id=p;
+  if n<>3 then raise exception 'Audit mismatch'; end if;
+  if has_function_privilege('authenticated','public.admin_update_player(uuid,bigint,text,integer,integer)','EXECUTE') or has_function_privilege('anon','public.apply_player_sync(bigint,integer,integer,integer,timestamptz)','EXECUTE') then raise exception 'Public privileged RPC'; end if;
+  if has_table_privilege('authenticated','public.dd_admin_adjustments','INSERT') then raise exception 'Direct DD editing allowed'; end if;
+end;
+$$;
+rollback;
+select 'PASS: admin identity, persistent rating, stale-update guard, DD grant/removal/reservations, audit, private RPC; all test rows rolled back' as result;

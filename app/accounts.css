@@ -21,3 +21,12 @@
 .season-announcement p { font-size: 16px; line-height: 1.6; }
 .season-kicker { font-size: 14px; color: #e9b84b; font-weight: 800; }
 @media (max-width: 620px) { .season-announcement { grid-template-columns: 1fr; padding: 18px; gap: 16px; } .season-announcement img { max-height: 340px; } .account-card { padding: 20px; } }
+.profile-admin-controls { margin: 24px 0; padding: 20px; border: 1px solid #80652e; border-radius: 16px; background: #131820; }
+.profile-admin-controls h2 { margin-top: 0; color: #e9b84b; }
+.admin-player-controls { padding: 16px 0; border-bottom: 1px solid #394356; margin-bottom: 16px; }
+.admin-player-controls form, .admin-dd-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin: 12px 0; }
+.admin-player-controls label { display: grid; gap: 6px; font-size: 14px; }
+.admin-player-controls input { width: 140px; padding: 12px; background: #0b111c; color: #f5f7fb; border: 1px solid #465167; border-radius: 10px; font: inherit; }
+.admin-player-controls .muted { font-size: 13px; line-height: 1.5; }
+.profile-admin-controls button:disabled { opacity: .5; cursor: default; }
+.profile-admin-controls button:focus-visible, .profile-admin-controls input:focus-visible { outline: 2px solid #e9b84b; outline-offset: 3px; }

@@ -1,3 +1,4 @@
+import AdminControls from "@/app/components/AdminControls";
 import { unstable_noStore as noStore } from "next/cache";
 import { notFound } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -201,6 +202,7 @@ export default async function PlayerPage({ params, searchParams }: { params: Pro
         <div className="stat">Winrate<b>{winrate}%</b></div>
       </section>
 
+      <AdminControls playerId={player.id} />
       <DoubleDownCard playerId={player.id} />
 
       <section className="card" style={{ padding: 18, marginBottom: 22, border: "1px solid rgba(255,118,118,.22)", background: "linear-gradient(135deg, rgba(47,18,24,.72), rgba(15,19,28,.96) 48%, rgba(10,14,21,.96))" }}>

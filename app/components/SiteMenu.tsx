@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 export default function SiteMenu() {
+  const [isAdmin, setIsAdmin] = useState(false);
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState<{ id: number; name: string; account_id: number } | null>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
@@ -16,6 +17,7 @@ export default function SiteMenu() {
         if (!response.ok) return;
         const data = await response.json();
         if (controller.signal.aborted) return;
+        setIsAdmin(Boolean(data.isAdmin));
         setProfile(data.account ? data.profile : null);
         setAvatar(null);
         if (data.account && data.profile?.account_id) {
@@ -65,7 +67,7 @@ export default function SiteMenu() {
         }}
       >
         <span style={{ fontSize: 18, lineHeight: 1 }}>☰</span>
-        <span>Меню</span>
+        <span>{isAdmin ? "Админ · Меню" : "Меню"}</span>
       </button>
 
       {open ? (
@@ -93,6 +95,7 @@ export default function SiteMenu() {
               <span style={{ minWidth: 0 }}><span style={{ display: "block", color: "#e9b84b" }}>Мой профиль</span><span style={{ display: "block", overflowWrap: "anywhere", fontSize: 14, marginTop: 4 }}>{profile.name}</span></span>
             </> : "👤 Login / Регистрация"}
           </a>
+          {isAdmin && <a href="/admin" style={{ display: "block", padding: 13, color: "#e9b84b" }}>Управление участниками</a>}
           {[
             ["🏆 Лидерборд", "/"],
             ["📊 Статистика сезона", "/stats"],

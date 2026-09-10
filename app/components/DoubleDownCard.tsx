@@ -6,7 +6,7 @@ type Status = {
   serverNow: string; lastActivatedAt: string | null; nextActivationAt: string | null; pendingCount: number;
   weekStart: string; nextReset: string; base: number; bonuses: number; total: number; used: number;
   pending: { id: number; activatedAt: string } | null; remaining: number;
-  extraRating: number; extraWon: number; extraLost: number;
+  adminAdjustment?: number; extraRating: number; extraWon: number; extraLost: number;
 };
 type ApiResponse = { ok: boolean; error?: string; message?: string; status?: Status };
 
@@ -107,6 +107,7 @@ export default function DoubleDownCard({ playerId }: { playerId: number }) {
         <span className="muted" style={{ fontSize: 12 }}>Новая неделя: {formatReset(status?.nextReset)} по Новосибирску</span>
       </div>
       {status?.lastActivatedAt ? <div style={{ marginTop: 13, padding: "11px 13px", borderRadius: 11, color: "#f2c36e", background: "rgba(233,184,75,.08)", border: "1px solid rgba(233,184,75,.22)" }}>Вы нажали Double Down: {formatReset(status.lastActivatedAt)}. {coolingDown ? <>Следующая активация через {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}.</> : status.remaining > 0 ? "Можно активировать следующий заряд, не дожидаясь результата предыдущей игры." : "Заряды на этой неделе закончились."} Ожидают учёта: {status.pendingCount}.</div> : null}
+      {Boolean(status?.adminAdjustment) && <p className="muted" style={{ fontSize: 12 }}>Корректировка DD администратором: {signed(status?.adminAdjustment ?? 0)}</p>}
       {message ? <div style={{ marginTop: 13, color: "#72e0a6", fontSize: 13 }}>{message}</div> : null}
       {error ? <div style={{ marginTop: 13, color: "#ff8585", fontSize: 13 }}>{error}</div> : null}
       <div className="muted" style={{ marginTop: 13, fontSize: 12 }}>База: 5 DD в неделю. За каждые 3 поражения подряд без победы между ними система автоматически добавляет ещё +1 DD после синхронизации.</div>
